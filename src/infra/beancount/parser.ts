@@ -48,6 +48,22 @@ const TXN_RE = /^(\d{4}-\d{2}-\d{2})\s+([*!])\s*(.*)$/;
 const POSTING_RE = /^(\s*)([!*]?)\s*([^\s]+)(?:\s+([-+]?\d[\d,]*(?:\.\d+)?)\s+([A-Z][A-Z0-9_]*))?/;
 const META_RE = /^(\s*)([\w-]+):\s*(.+)$/;
 
+export const SECTION_CHART_OF_ACCOUNTS = ";; ---- Chart of accounts ----";
+export const SECTION_TRANSACTIONS = ";; ---- Transactions ----";
+
+function isGeneratedSectionHeader(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed === SECTION_CHART_OF_ACCOUNTS || trimmed === SECTION_TRANSACTIONS;
+}
+
+function trimTrailingBlankLines(lines: string[]): string[] {
+  let end = lines.length;
+  while (end > 0 && lines[end - 1].trim() === "") {
+    end -= 1;
+  }
+  return lines.slice(0, end);
+}
+
 function parseMetaValue(raw: string): MetaValue {
   const trimmed = raw.trim();
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
@@ -140,6 +156,10 @@ export function parseBeancount(source: string): BeancountDocument {
     const trimmed = line.trim();
 
     if (!trimmed || trimmed.startsWith(";;")) {
+      if (isGeneratedSectionHeader(trimmed)) {
+        index += 1;
+        continue;
+      }
       if (section === "preamble") preamble.push(line);
       else if (section === "epilogue") epilogue.push(line);
       index += 1;
@@ -232,11 +252,14 @@ export function parseBeancount(source: string): BeancountDocument {
 
 export function serializeBeancount(document: BeancountDocument): string {
   const chunks: string[] = [];
-  chunks.push(...document.preamble);
-  if (document.preamble.length > 0) chunks.push("");
+  const preamble = trimTrailingBlankLines(
+    document.preamble.filter((line) => !isGeneratedSectionHeader(line))
+  );
+  chunks.push(...preamble);
+  if (preamble.length > 0) chunks.push("");
 
   if (document.opens.length > 0) {
-    chunks.push(";; ---- Chart of accounts ----");
+    chunks.push(SECTION_CHART_OF_ACCOUNTS);
     for (const open of document.opens) {
       const currencies = open.currencies.join(" ");
       const booking = open.booking ? ` ${open.booking}` : "";
@@ -249,7 +272,7 @@ export function serializeBeancount(document: BeancountDocument): string {
   }
 
   if (document.transactions.length > 0) {
-    chunks.push(";; ---- Transactions ----");
+    chunks.push(SECTION_TRANSACTIONS);
     for (const txn of document.transactions) {
       const payee = txn.payee ? `${escapeQuoted(txn.payee)} ` : "";
       const narration = txn.narration ? `${escapeQuoted(txn.narration)} ` : "";

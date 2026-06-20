@@ -48,6 +48,30 @@ describe("beancount parser", () => {
     const idsAfter = new Set(storeAgain.accounts.map((account) => account.id));
     expect(idsAfter).toEqual(idsBefore);
   });
+
+  test("does not duplicate generated section headers on round-trip", () => {
+    const source = [
+      'option "title" "Company"',
+      'option "operating_currency" "USD"',
+      "",
+      ";; ---- Chart of accounts ----",
+      "2024-01-01 open Assets:Cash USD",
+      '  id: "acct-1"',
+      "",
+      ";; ---- Transactions ----",
+      '2024-02-01 * "Payee" "Memo"',
+      '  id: "txn-1"',
+      "  Assets:Cash 10.00 USD",
+      "  Expenses:Misc -10.00 USD"
+    ].join("\n");
+
+    const once = serializeBeancount(parseBeancount(source));
+    const twice = serializeBeancount(parseBeancount(once));
+
+    expect(once).toBe(twice);
+    expect(once.match(/;; ---- Chart of accounts ----/g)?.length).toBe(1);
+    expect(once.match(/;; ---- Transactions ----/g)?.length).toBe(1);
+  });
 });
 
 describe("repository + services", () => {
