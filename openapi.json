@@ -1,0 +1,3664 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bank Register API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3001/api"
+    }
+  ],
+  "components": {
+    "schemas": {},
+    "parameters": {}
+  },
+  "paths": {
+    "/api/accounts": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "List accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "code": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "category": {
+                        "type": "string",
+                        "enum": [
+                          "ACCOUNTS_RECEIVABLE",
+                          "BANK",
+                          "CREDIT_CARD",
+                          "EQUITY",
+                          "EXPENSE",
+                          "FIXED_ASSET",
+                          "INCOME",
+                          "LONG_TERM_LIABILITY",
+                          "OTHER_CURRENT_ASSET",
+                          "OTHER_CURRENT_LIABILITY",
+                          "OTHER_EXPENSE",
+                          "OTHER_INCOME"
+                        ]
+                      },
+                      "subtype": {
+                        "type": "string"
+                      },
+                      "currency": {
+                        "type": "string",
+                        "default": "USD"
+                      },
+                      "openingBalance": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "currentBalance": {
+                        "type": "number",
+                        "default": 0
+                      },
+                      "allowManualEntries": {
+                        "type": "boolean",
+                        "default": true
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "ACTIVE",
+                          "ARCHIVED",
+                          "CLOSED"
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "archivedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "code",
+                      "name",
+                      "category",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "ACCOUNTS_RECEIVABLE",
+                      "BANK",
+                      "CREDIT_CARD",
+                      "EQUITY",
+                      "EXPENSE",
+                      "FIXED_ASSET",
+                      "INCOME",
+                      "LONG_TERM_LIABILITY",
+                      "OTHER_CURRENT_ASSET",
+                      "OTHER_CURRENT_LIABILITY",
+                      "OTHER_EXPENSE",
+                      "OTHER_INCOME"
+                    ]
+                  },
+                  "subtype": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "default": "USD"
+                  },
+                  "openingBalance": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "code",
+                  "name",
+                  "category"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "ACCOUNTS_RECEIVABLE",
+                        "BANK",
+                        "CREDIT_CARD",
+                        "EQUITY",
+                        "EXPENSE",
+                        "FIXED_ASSET",
+                        "INCOME",
+                        "LONG_TERM_LIABILITY",
+                        "OTHER_CURRENT_ASSET",
+                        "OTHER_CURRENT_LIABILITY",
+                        "OTHER_EXPENSE",
+                        "OTHER_INCOME"
+                      ]
+                    },
+                    "subtype": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "default": "USD"
+                    },
+                    "openingBalance": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currentBalance": {
+                      "type": "number",
+                      "default": 0
+                    },
+                    "allowManualEntries": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED",
+                        "CLOSED"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "code",
+                    "name",
+                    "category",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountId}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "ACCOUNTS_RECEIVABLE",
+                        "BANK",
+                        "CREDIT_CARD",
+                        "EQUITY",
+                        "EXPENSE",
+                        "FIXED_ASSET",
+                        "INCOME",
+                        "LONG_TERM_LIABILITY",
+                        "OTHER_CURRENT_ASSET",
+                        "OTHER_CURRENT_LIABILITY",
+                        "OTHER_EXPENSE",
+                        "OTHER_INCOME"
+                      ]
+                    },
+                    "subtype": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "default": "USD"
+                    },
+                    "openingBalance": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currentBalance": {
+                      "type": "number",
+                      "default": 0
+                    },
+                    "allowManualEntries": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED",
+                        "CLOSED"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "code",
+                    "name",
+                    "category",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ACTIVE",
+                      "ARCHIVED",
+                      "CLOSED"
+                    ]
+                  },
+                  "subtype": {
+                    "type": "string"
+                  },
+                  "allowManualEntries": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "ACCOUNTS_RECEIVABLE",
+                        "BANK",
+                        "CREDIT_CARD",
+                        "EQUITY",
+                        "EXPENSE",
+                        "FIXED_ASSET",
+                        "INCOME",
+                        "LONG_TERM_LIABILITY",
+                        "OTHER_CURRENT_ASSET",
+                        "OTHER_CURRENT_LIABILITY",
+                        "OTHER_EXPENSE",
+                        "OTHER_INCOME"
+                      ]
+                    },
+                    "subtype": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "default": "USD"
+                    },
+                    "openingBalance": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "currentBalance": {
+                      "type": "number",
+                      "default": 0
+                    },
+                    "allowManualEntries": {
+                      "type": "boolean",
+                      "default": true
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ACTIVE",
+                        "ARCHIVED",
+                        "CLOSED"
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "archivedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "code",
+                    "name",
+                    "category",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/accounts/{accountId}/register": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "accountId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Register entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "accountId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "transactionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "transactionType": {
+                        "type": "string",
+                        "enum": [
+                          "CHECK",
+                          "DEPOSIT",
+                          "SALES_RECEIPT",
+                          "RECEIVE_PAYMENT",
+                          "BILL_PAYMENT",
+                          "REFUND",
+                          "EXPENSE",
+                          "TRANSFER",
+                          "JOURNAL_ENTRY"
+                        ]
+                      },
+                      "refNumber": {
+                        "type": "string"
+                      },
+                      "payee": {
+                        "type": "string"
+                      },
+                      "accountLabel": {
+                        "type": "string"
+                      },
+                      "memo": {
+                        "type": "string"
+                      },
+                      "payment": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "deposit": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "reconcileStatus": {
+                        "type": "string",
+                        "enum": [
+                          "",
+                          "C",
+                          "R"
+                        ],
+                        "default": ""
+                      },
+                      "runningBalance": {
+                        "type": "number"
+                      },
+                      "postedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "date": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "DRAFT",
+                          "POSTED",
+                          "VOIDED",
+                          "DELETED"
+                        ]
+                      },
+                      "createdBy": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "accountId",
+                      "transactionId",
+                      "transactionType",
+                      "runningBalance",
+                      "date",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "List transactions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "CHECK",
+                          "DEPOSIT",
+                          "SALES_RECEIPT",
+                          "RECEIVE_PAYMENT",
+                          "BILL_PAYMENT",
+                          "REFUND",
+                          "EXPENSE",
+                          "TRANSFER",
+                          "JOURNAL_ENTRY"
+                        ]
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "DRAFT",
+                          "POSTED",
+                          "VOIDED",
+                          "DELETED"
+                        ]
+                      },
+                      "transactionDate": {
+                        "type": "string"
+                      },
+                      "referenceNumber": {
+                        "type": "string"
+                      },
+                      "memo": {
+                        "type": "string"
+                      },
+                      "payee": {
+                        "type": "string"
+                      },
+                      "accountLabel": {
+                        "type": "string"
+                      },
+                      "sourceAccountId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "reconcileStatus": {
+                        "type": "string",
+                        "enum": [
+                          "",
+                          "C",
+                          "R"
+                        ]
+                      },
+                      "periodId": {
+                        "type": "string"
+                      },
+                      "postings": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "accountId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "DEBIT",
+                                "CREDIT"
+                              ]
+                            },
+                            "amount": {
+                              "type": "number",
+                              "minimum": 0.01
+                            }
+                          },
+                          "required": [
+                            "accountId",
+                            "type",
+                            "amount"
+                          ]
+                        },
+                        "minItems": 2
+                      },
+                      "auditLog": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "action": {
+                              "type": "string"
+                            },
+                            "userId": {
+                              "type": "string"
+                            },
+                            "timestamp": {
+                              "type": "string"
+                            },
+                            "changes": {
+                              "type": "object",
+                              "nullable": true,
+                              "additionalProperties": {
+                                "nullable": true
+                              }
+                            }
+                          },
+                          "required": [
+                            "action",
+                            "userId",
+                            "timestamp"
+                          ]
+                        }
+                      },
+                      "createdBy": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updatedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "postedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "voidedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "reversedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "referenceOriginalTransactionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "type",
+                      "status",
+                      "transactionDate",
+                      "postings"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "CHECK",
+                      "DEPOSIT",
+                      "SALES_RECEIPT",
+                      "RECEIVE_PAYMENT",
+                      "BILL_PAYMENT",
+                      "REFUND",
+                      "EXPENSE",
+                      "TRANSFER",
+                      "JOURNAL_ENTRY"
+                    ]
+                  },
+                  "transactionDate": {
+                    "type": "string"
+                  },
+                  "referenceNumber": {
+                    "type": "string"
+                  },
+                  "memo": {
+                    "type": "string"
+                  },
+                  "payee": {
+                    "type": "string"
+                  },
+                  "accountLabel": {
+                    "type": "string"
+                  },
+                  "sourceAccountId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reconcileStatus": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  },
+                  "postings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "accountId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "DEBIT",
+                            "CREDIT"
+                          ]
+                        },
+                        "amount": {
+                          "type": "number",
+                          "minimum": 0.01
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "type",
+                        "amount"
+                      ]
+                    },
+                    "minItems": 2
+                  }
+                },
+                "required": [
+                  "type",
+                  "transactionDate",
+                  "postings"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions/{transactionId}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions/{transactionId}/post": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Posted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions/{transactionId}/void": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Voided",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions/{transactionId}/reverse": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reversed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transfers": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "transactionDate": {
+                    "type": "string"
+                  },
+                  "referenceNumber": {
+                    "type": "string"
+                  },
+                  "memo": {
+                    "type": "string"
+                  },
+                  "payee": {
+                    "type": "string"
+                  },
+                  "accountLabel": {
+                    "type": "string"
+                  },
+                  "sourceAccountId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reconcileStatus": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  },
+                  "postings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "accountId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "DEBIT",
+                            "CREDIT"
+                          ]
+                        },
+                        "amount": {
+                          "type": "number",
+                          "minimum": 0.01
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "type",
+                        "amount"
+                      ]
+                    },
+                    "minItems": 2
+                  }
+                },
+                "required": [
+                  "transactionDate",
+                  "postings"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Transfer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/deposits": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "transactionDate": {
+                    "type": "string"
+                  },
+                  "referenceNumber": {
+                    "type": "string"
+                  },
+                  "memo": {
+                    "type": "string"
+                  },
+                  "payee": {
+                    "type": "string"
+                  },
+                  "accountLabel": {
+                    "type": "string"
+                  },
+                  "sourceAccountId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reconcileStatus": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  },
+                  "postings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "accountId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "DEBIT",
+                            "CREDIT"
+                          ]
+                        },
+                        "amount": {
+                          "type": "number",
+                          "minimum": 0.01
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "type",
+                        "amount"
+                      ]
+                    },
+                    "minItems": 2
+                  }
+                },
+                "required": [
+                  "transactionDate",
+                  "postings"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Deposit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/expenses": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "transactionDate": {
+                    "type": "string"
+                  },
+                  "referenceNumber": {
+                    "type": "string"
+                  },
+                  "memo": {
+                    "type": "string"
+                  },
+                  "payee": {
+                    "type": "string"
+                  },
+                  "accountLabel": {
+                    "type": "string"
+                  },
+                  "sourceAccountId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reconcileStatus": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  },
+                  "postings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "accountId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "DEBIT",
+                            "CREDIT"
+                          ]
+                        },
+                        "amount": {
+                          "type": "number",
+                          "minimum": 0.01
+                        }
+                      },
+                      "required": [
+                        "accountId",
+                        "type",
+                        "amount"
+                      ]
+                    },
+                    "minItems": 2
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "EXPENSE"
+                    ]
+                  }
+                },
+                "required": [
+                  "transactionDate",
+                  "postings"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Expense",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "transactionDate": {
+                      "type": "string"
+                    },
+                    "referenceNumber": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "sourceAccountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ]
+                    },
+                    "periodId": {
+                      "type": "string"
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          }
+                        },
+                        "required": [
+                          "accountId",
+                          "type",
+                          "amount"
+                        ]
+                      },
+                      "minItems": 2
+                    },
+                    "auditLog": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "action": {
+                            "type": "string"
+                          },
+                          "userId": {
+                            "type": "string"
+                          },
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "changes": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": {
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "required": [
+                          "action",
+                          "userId",
+                          "timestamp"
+                        ]
+                      }
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "voidedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "reversedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "referenceOriginalTransactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "type",
+                    "status",
+                    "transactionDate",
+                    "postings"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/register/{entryId}": {
+      "patch": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "entryId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string"
+                  },
+                  "refNumber": {
+                    "type": "string"
+                  },
+                  "payee": {
+                    "type": "string"
+                  },
+                  "memo": {
+                    "type": "string"
+                  },
+                  "payment": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "deposit": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "reconcileStatus": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  },
+                  "counterpartyAccountId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionType": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "refNumber": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payment": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "deposit": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ],
+                      "default": ""
+                    },
+                    "runningBalance": {
+                      "type": "number"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "date": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "transactionId",
+                    "transactionType",
+                    "runningBalance",
+                    "date",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "entryId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionType": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "refNumber": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payment": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "deposit": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ],
+                      "default": ""
+                    },
+                    "runningBalance": {
+                      "type": "number"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "date": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "transactionId",
+                    "transactionType",
+                    "runningBalance",
+                    "date",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/register/{entryId}/reconcile": {
+      "post": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "entryId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "C",
+                      "R"
+                    ]
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reconcile status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "accountId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "transactionType": {
+                      "type": "string",
+                      "enum": [
+                        "CHECK",
+                        "DEPOSIT",
+                        "SALES_RECEIPT",
+                        "RECEIVE_PAYMENT",
+                        "BILL_PAYMENT",
+                        "REFUND",
+                        "EXPENSE",
+                        "TRANSFER",
+                        "JOURNAL_ENTRY"
+                      ]
+                    },
+                    "refNumber": {
+                      "type": "string"
+                    },
+                    "payee": {
+                      "type": "string"
+                    },
+                    "accountLabel": {
+                      "type": "string"
+                    },
+                    "memo": {
+                      "type": "string"
+                    },
+                    "payment": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "deposit": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "reconcileStatus": {
+                      "type": "string",
+                      "enum": [
+                        "",
+                        "C",
+                        "R"
+                      ],
+                      "default": ""
+                    },
+                    "runningBalance": {
+                      "type": "number"
+                    },
+                    "postedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "date": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "POSTED",
+                        "VOIDED",
+                        "DELETED"
+                      ]
+                    },
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "transactionId",
+                    "transactionType",
+                    "runningBalance",
+                    "date",
+                    "status",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/transactions/{transactionId}/detail": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Transaction detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "transaction": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "CHECK",
+                            "DEPOSIT",
+                            "SALES_RECEIPT",
+                            "RECEIVE_PAYMENT",
+                            "BILL_PAYMENT",
+                            "REFUND",
+                            "EXPENSE",
+                            "TRANSFER",
+                            "JOURNAL_ENTRY"
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "DRAFT",
+                            "POSTED",
+                            "VOIDED",
+                            "DELETED"
+                          ]
+                        },
+                        "transactionDate": {
+                          "type": "string"
+                        },
+                        "referenceNumber": {
+                          "type": "string"
+                        },
+                        "memo": {
+                          "type": "string"
+                        },
+                        "payee": {
+                          "type": "string"
+                        },
+                        "accountLabel": {
+                          "type": "string"
+                        },
+                        "sourceAccountId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "reconcileStatus": {
+                          "type": "string",
+                          "enum": [
+                            "",
+                            "C",
+                            "R"
+                          ]
+                        },
+                        "periodId": {
+                          "type": "string"
+                        },
+                        "postings": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "accountId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": [
+                                  "DEBIT",
+                                  "CREDIT"
+                                ]
+                              },
+                              "amount": {
+                                "type": "number",
+                                "minimum": 0.01
+                              }
+                            },
+                            "required": [
+                              "accountId",
+                              "type",
+                              "amount"
+                            ]
+                          },
+                          "minItems": 2
+                        },
+                        "auditLog": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "action": {
+                                "type": "string"
+                              },
+                              "userId": {
+                                "type": "string"
+                              },
+                              "timestamp": {
+                                "type": "string"
+                              },
+                              "changes": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": {
+                                  "nullable": true
+                                }
+                              }
+                            },
+                            "required": [
+                              "action",
+                              "userId",
+                              "timestamp"
+                            ]
+                          }
+                        },
+                        "createdBy": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "postedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "voidedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "reversedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "referenceOriginalTransactionId": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "type",
+                        "status",
+                        "transactionDate",
+                        "postings"
+                      ]
+                    },
+                    "postings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "transactionId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "registerEntryId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "accountCode": {
+                            "type": "string"
+                          },
+                          "accountName": {
+                            "type": "string"
+                          },
+                          "entryType": {
+                            "type": "string",
+                            "enum": [
+                              "DEBIT",
+                              "CREDIT"
+                            ]
+                          },
+                          "amount": {
+                            "type": "number",
+                            "minimum": 0.01
+                          },
+                          "currency": {
+                            "type": "string",
+                            "default": "USD"
+                          },
+                          "exchangeRate": {
+                            "type": "number",
+                            "default": 1
+                          },
+                          "postingDate": {
+                            "type": "string"
+                          },
+                          "fiscalPeriod": {
+                            "type": "string"
+                          },
+                          "memo": {
+                            "type": "string"
+                          },
+                          "referenceNumber": {
+                            "type": "string"
+                          },
+                          "sourceDocumentType": {
+                            "type": "string",
+                            "enum": [
+                              "CHECK",
+                              "DEPOSIT",
+                              "SALES_RECEIPT",
+                              "RECEIVE_PAYMENT",
+                              "BILL_PAYMENT",
+                              "REFUND",
+                              "EXPENSE",
+                              "TRANSFER",
+                              "JOURNAL_ENTRY"
+                            ]
+                          },
+                          "sourceDocumentId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "reconciliationStatus": {
+                            "type": "string",
+                            "enum": [
+                              "UNRECONCILED",
+                              "RECONCILED"
+                            ],
+                            "default": "UNRECONCILED"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "PENDING",
+                              "POSTED",
+                              "VOIDED",
+                              "REVERSED"
+                            ]
+                          },
+                          "createdBy": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "postedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "voidedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "reversedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "transactionId",
+                          "accountId",
+                          "entryType",
+                          "amount",
+                          "postingDate",
+                          "fiscalPeriod",
+                          "status",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "registerEntries": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "accountId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "transactionId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "transactionType": {
+                            "type": "string",
+                            "enum": [
+                              "CHECK",
+                              "DEPOSIT",
+                              "SALES_RECEIPT",
+                              "RECEIVE_PAYMENT",
+                              "BILL_PAYMENT",
+                              "REFUND",
+                              "EXPENSE",
+                              "TRANSFER",
+                              "JOURNAL_ENTRY"
+                            ]
+                          },
+                          "refNumber": {
+                            "type": "string"
+                          },
+                          "payee": {
+                            "type": "string"
+                          },
+                          "accountLabel": {
+                            "type": "string"
+                          },
+                          "memo": {
+                            "type": "string"
+                          },
+                          "payment": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "deposit": {
+                            "type": "number",
+                            "minimum": 0
+                          },
+                          "reconcileStatus": {
+                            "type": "string",
+                            "enum": [
+                              "",
+                              "C",
+                              "R"
+                            ],
+                            "default": ""
+                          },
+                          "runningBalance": {
+                            "type": "number"
+                          },
+                          "postedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "date": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "POSTED",
+                              "VOIDED",
+                              "DELETED"
+                            ]
+                          },
+                          "createdBy": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "accountId",
+                          "transactionId",
+                          "transactionType",
+                          "runningBalance",
+                          "date",
+                          "status",
+                          "createdAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "transaction",
+                    "postings",
+                    "registerEntries"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/postings": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Ledger postings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "transactionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "registerEntryId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "accountId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "accountCode": {
+                        "type": "string"
+                      },
+                      "accountName": {
+                        "type": "string"
+                      },
+                      "entryType": {
+                        "type": "string",
+                        "enum": [
+                          "DEBIT",
+                          "CREDIT"
+                        ]
+                      },
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0.01
+                      },
+                      "currency": {
+                        "type": "string",
+                        "default": "USD"
+                      },
+                      "exchangeRate": {
+                        "type": "number",
+                        "default": 1
+                      },
+                      "postingDate": {
+                        "type": "string"
+                      },
+                      "fiscalPeriod": {
+                        "type": "string"
+                      },
+                      "memo": {
+                        "type": "string"
+                      },
+                      "referenceNumber": {
+                        "type": "string"
+                      },
+                      "sourceDocumentType": {
+                        "type": "string",
+                        "enum": [
+                          "CHECK",
+                          "DEPOSIT",
+                          "SALES_RECEIPT",
+                          "RECEIVE_PAYMENT",
+                          "BILL_PAYMENT",
+                          "REFUND",
+                          "EXPENSE",
+                          "TRANSFER",
+                          "JOURNAL_ENTRY"
+                        ]
+                      },
+                      "sourceDocumentId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "reconciliationStatus": {
+                        "type": "string",
+                        "enum": [
+                          "UNRECONCILED",
+                          "RECONCILED"
+                        ],
+                        "default": "UNRECONCILED"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "PENDING",
+                          "POSTED",
+                          "VOIDED",
+                          "REVERSED"
+                        ]
+                      },
+                      "createdBy": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "postedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "voidedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "reversedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "transactionId",
+                      "accountId",
+                      "entryType",
+                      "amount",
+                      "postingDate",
+                      "fiscalPeriod",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ledger/transactions/{transactionId}/postings": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "transactionId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Postings for transaction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "transactionId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "registerEntryId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "accountId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "accountCode": {
+                        "type": "string"
+                      },
+                      "accountName": {
+                        "type": "string"
+                      },
+                      "entryType": {
+                        "type": "string",
+                        "enum": [
+                          "DEBIT",
+                          "CREDIT"
+                        ]
+                      },
+                      "amount": {
+                        "type": "number",
+                        "minimum": 0.01
+                      },
+                      "currency": {
+                        "type": "string",
+                        "default": "USD"
+                      },
+                      "exchangeRate": {
+                        "type": "number",
+                        "default": 1
+                      },
+                      "postingDate": {
+                        "type": "string"
+                      },
+                      "fiscalPeriod": {
+                        "type": "string"
+                      },
+                      "memo": {
+                        "type": "string"
+                      },
+                      "referenceNumber": {
+                        "type": "string"
+                      },
+                      "sourceDocumentType": {
+                        "type": "string",
+                        "enum": [
+                          "CHECK",
+                          "DEPOSIT",
+                          "SALES_RECEIPT",
+                          "RECEIVE_PAYMENT",
+                          "BILL_PAYMENT",
+                          "REFUND",
+                          "EXPENSE",
+                          "TRANSFER",
+                          "JOURNAL_ENTRY"
+                        ]
+                      },
+                      "sourceDocumentId": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "reconciliationStatus": {
+                        "type": "string",
+                        "enum": [
+                          "UNRECONCILED",
+                          "RECONCILED"
+                        ],
+                        "default": "UNRECONCILED"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "PENDING",
+                          "POSTED",
+                          "VOIDED",
+                          "REVERSED"
+                        ]
+                      },
+                      "createdBy": {
+                        "type": "string"
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "postedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "voidedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "reversedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "transactionId",
+                      "accountId",
+                      "entryType",
+                      "amount",
+                      "postingDate",
+                      "fiscalPeriod",
+                      "status",
+                      "createdAt"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

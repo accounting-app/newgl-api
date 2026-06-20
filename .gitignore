@@ -1,0 +1,4 @@
+node_modules/
+.env
+data/*.bean.tmp
+*.log

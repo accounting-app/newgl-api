@@ -1,0 +1,6 @@
+;; -*- mode: beancount; -*-
+option "title" "OpenAPI Fixture"
+option "operating_currency" "USD"
+
+2024-01-01 commodity USD
+  name: "US Dollar"
