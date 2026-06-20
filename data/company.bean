@@ -925,8 +925,38 @@ option "operating_currency" "USD"
   source-account-path: "Assets:Bank:Cash"
   created-by: "user"
   created-at: "2026-06-20T17:00:30.546Z"
-  updated-at: "2026-06-20T17:00:30.556Z"
+  updated-at: "2026-06-20T17:11:31.606Z"
   posted-at: "2026-06-20T17:00:30.556Z"
   period-id: "period-2026-06"
-  Expenses:Admin-Contractor 180.00 USD
-  Assets:Bank:Cash -180.00 USD
+  Expenses:Admin-Contractor 1000.00 USD
+  Assets:Bank:Cash -1000.00 USD
+
+2026-06-20 * ^TX-1004
+  id: "0d0083a1-c150-4a79-8413-4f24b9e295f7"
+  qbo-type: "DEPOSIT"
+  status: "POSTED"
+  ref: "TX-1004"
+  account-label: "Coding Services:By David Castillo"
+  source-account-path: "Assets:Bank:Cash"
+  created-by: "user"
+  created-at: "2026-06-20T17:11:25.212Z"
+  updated-at: "2026-06-20T17:11:25.217Z"
+  posted-at: "2026-06-20T17:11:25.217Z"
+  period-id: "period-2026-06"
+  Assets:Bank:Cash 10000.00 USD
+  Income:Coding-Services:By-David-Castillo -10000.00 USD
+
+2026-06-20 * "Hector E Garcia" ^TX-1005
+  id: "7292d156-ab7d-47c4-bd5a-a7e38623ed7d"
+  qbo-type: "CHECK"
+  status: "POSTED"
+  ref: "TX-1005"
+  account-label: "Shareholder Contribution"
+  source-account-path: "Assets:Bank:Cash"
+  created-by: "user"
+  created-at: "2026-06-20T17:15:28.060Z"
+  updated-at: "2026-06-20T17:15:28.068Z"
+  posted-at: "2026-06-20T17:15:28.068Z"
+  period-id: "period-2026-06"
+  Equity:Shareholder-Contribution 100.00 USD
+  Assets:Bank:Cash -100.00 USD

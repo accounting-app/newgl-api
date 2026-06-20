@@ -1,4 +1,3 @@
-import { DEBIT_NORMAL_CATEGORIES } from "@/core/accounting-reports";
 import { buildChartAccount, rebuildDerivedViews } from "@/core/ledger-engine";
 import { getPeriodIdForDate } from "@/core/periods";
 import type {
@@ -36,24 +35,16 @@ function signedToPosting(
   account: Account,
   signedAmount: number
 ): { type: PostingEntryType; amount: number } {
-  const debitNormal = DEBIT_NORMAL_CATEGORIES.has(account.category);
   const amount = Math.abs(signedAmount);
   if (signedAmount === 0) {
     return { type: "DEBIT", amount: 0 };
   }
-  const isPositive = signedAmount > 0;
-  if (debitNormal) {
-    return { type: isPositive ? "DEBIT" : "CREDIT", amount };
-  }
-  return { type: isPositive ? "CREDIT" : "DEBIT", amount };
+  // Beancount: positive signed amounts are debits, negative amounts are credits.
+  return { type: signedAmount > 0 ? "DEBIT" : "CREDIT", amount };
 }
 
-function postingToSigned(account: Account, type: PostingEntryType, amount: number): number {
-  const debitNormal = DEBIT_NORMAL_CATEGORIES.has(account.category);
-  if (debitNormal) {
-    return type === "DEBIT" ? amount : -amount;
-  }
-  return type === "CREDIT" ? amount : -amount;
+function postingToSigned(_account: Account, type: PostingEntryType, amount: number): number {
+  return type === "DEBIT" ? amount : -amount;
 }
 
 function inferTransactionStatus(txn: ParsedTransaction): TransactionStatus {

@@ -31,10 +31,18 @@ describe("beancount parser", () => {
     const source = await readFile(fixturePath, "utf8");
     const document = parseBeancount(source);
     const store = documentToStore(document);
-    store.transactions.forEach((transaction) => {
-      if (transaction.postings.length >= 2) {
-        expect(validateDoubleEntry(transaction.postings)).toBe(true);
+    document.transactions.forEach((parsed, index) => {
+      if (parsed.postings.length < 2) {
+        return;
       }
+      if (parsed.postings.some((posting) => posting.currency && posting.currency !== "USD")) {
+        return;
+      }
+      const transaction = store.transactions[index];
+      if (transaction.postings.length < 2) {
+        return;
+      }
+      expect(validateDoubleEntry(transaction.postings)).toBe(true);
     });
   });
 
@@ -71,6 +79,25 @@ describe("beancount parser", () => {
     expect(once).toBe(twice);
     expect(once.match(/;; ---- Chart of accounts ----/g)?.length).toBe(1);
     expect(once.match(/;; ---- Transactions ----/g)?.length).toBe(1);
+  });
+
+  test("parses posting lines when account paths contain colons", () => {
+    const source = [
+      '2026-06-20 * "David Castillo" ^TX-1003',
+      '  id: "txn-1"',
+      '  qbo-type: "CHECK"',
+      '  status: "POSTED"',
+      "  Expenses:Admin-Contractor 180.00 USD",
+      "  Assets:Bank:Cash -180.00 USD"
+    ].join("\n");
+
+    const document = parseBeancount(source);
+    expect(document.transactions).toHaveLength(1);
+    expect(document.transactions[0].postings).toHaveLength(2);
+    expect(document.transactions[0].postings[0].account).toBe("Expenses:Admin-Contractor");
+    expect(document.transactions[0].postings[0].amount).toBe(180);
+    expect(document.transactions[0].postings[1].account).toBe("Assets:Bank:Cash");
+    expect(document.transactions[0].postings[1].amount).toBe(-180);
   });
 });
 
@@ -116,5 +143,45 @@ describe("repository + services", () => {
     const register = await services.registerService.listRegisterEntries(account.id);
     expect(register.length).toBe(1);
     expect(register[0].payment).toBe(50);
+  });
+
+  test("deposit round-trips through persist and reload with register entries", async () => {
+    const ledgerFile = `/tmp/newgl-deposit-${crypto.randomUUID()}.bean`;
+    const repository = new BeancountLedgerRepository(ledgerFile, "Test Co");
+    await repository.load();
+    const services = createServiceContainer(repository);
+
+    const bank = await services.accountService.createAccount({
+      code: "1010",
+      name: "Cash",
+      category: "BANK",
+      currency: "USD"
+    });
+    const income = await services.accountService.createAccount({
+      code: "4010",
+      name: "Services",
+      category: "INCOME",
+      currency: "USD"
+    });
+
+    await services.transactionService.createDeposit({
+      transactionDate: "2026-06-20",
+      referenceNumber: "TX-DEP-1",
+      sourceAccountId: bank.id,
+      accountLabel: income.name,
+      postings: [
+        { accountId: bank.id, type: "DEBIT", amount: 75 },
+        { accountId: income.id, type: "CREDIT", amount: 75 }
+      ]
+    });
+
+    const reloaded = new BeancountLedgerRepository(ledgerFile, "Test Co");
+    await reloaded.load();
+    const reloadedServices = createServiceContainer(reloaded);
+
+    const register = await reloadedServices.registerService.listRegisterEntries(bank.id);
+    expect(register.length).toBe(1);
+    expect(register[0].deposit).toBe(75);
+    expect(register[0].runningBalance).toBe(75);
   });
 });

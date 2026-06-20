@@ -64,6 +64,15 @@ function trimTrailingBlankLines(lines: string[]): string[] {
   return lines.slice(0, end);
 }
 
+/** Beancount account paths (e.g. `Assets:Bank:Cash`) contain colons and match META_RE; skip them. */
+function isPostingLine(line: string): boolean {
+  const match = POSTING_RE.exec(line);
+  if (!match || match[1].length < 2) {
+    return false;
+  }
+  return match[4] !== undefined && match[5] !== undefined;
+}
+
 function parseMetaValue(raw: string): MetaValue {
   const trimmed = raw.trim();
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
@@ -86,6 +95,9 @@ function parseMetadataBlock(lines: string[], startIndex: number): { metadata: Me
     if (!line.trim()) {
       index += 1;
       continue;
+    }
+    if (isPostingLine(line)) {
+      break;
     }
     const metaMatch = META_RE.exec(line);
     if (!metaMatch || metaMatch[1].length < 2) {
