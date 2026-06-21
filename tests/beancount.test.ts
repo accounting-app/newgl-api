@@ -99,6 +99,26 @@ describe("beancount parser", () => {
     expect(document.transactions[0].postings[1].account).toBe("Assets:Bank:Cash");
     expect(document.transactions[0].postings[1].amount).toBe(-180);
   });
+
+  test("parses implicit posting lines without amounts", () => {
+    const source = [
+      '2024-01-05 * "Figma" "Design subscription"',
+      "  Expenses:Software 45.00 USD",
+      "  Liabilities:CreditCard:Amex"
+    ].join("\n");
+
+    const document = parseBeancount(source);
+    expect(document.transactions).toHaveLength(1);
+    expect(document.transactions[0].postings).toHaveLength(2);
+    expect(document.transactions[0].postings[0].account).toBe("Expenses:Software");
+    expect(document.transactions[0].postings[1].account).toBe("Liabilities:CreditCard:Amex");
+    expect(document.transactions[0].postings[1].amount).toBeUndefined();
+
+    const serialized = serializeBeancount(document);
+    expect(serialized).toContain("  Expenses:Software 45.00 USD");
+    expect(serialized).toContain("  Liabilities:CreditCard:Amex");
+    expect(serialized).not.toContain('Liabilities: "CreditCard:Amex"');
+  });
 });
 
 describe("repository + services", () => {

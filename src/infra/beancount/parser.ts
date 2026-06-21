@@ -64,7 +64,18 @@ function trimTrailingBlankLines(lines: string[]): string[] {
   return lines.slice(0, end);
 }
 
-/** Beancount account paths (e.g. `Assets:Bank:Cash`) contain colons and match META_RE; skip them. */
+const BEAN_ACCOUNT_ROOT_RE = /^(Assets|Liabilities|Equity|Income|Expenses)(:|$)/;
+
+/** Any posting line, including implicit postings without an amount. */
+function isAccountPostingLine(line: string): boolean {
+  const match = POSTING_RE.exec(line);
+  if (!match || match[1].length < 2 || !match[3]) {
+    return false;
+  }
+  return BEAN_ACCOUNT_ROOT_RE.test(match[3]);
+}
+
+/** Posting line with an explicit amount and currency. */
 function isPostingLine(line: string): boolean {
   const match = POSTING_RE.exec(line);
   if (!match || match[1].length < 2) {
@@ -96,7 +107,7 @@ function parseMetadataBlock(lines: string[], startIndex: number): { metadata: Me
       index += 1;
       continue;
     }
-    if (isPostingLine(line)) {
+    if (isAccountPostingLine(line)) {
       break;
     }
     const metaMatch = META_RE.exec(line);
@@ -216,7 +227,7 @@ export function parseBeancount(source: string): BeancountDocument {
           break;
         }
         const metaOnly = META_RE.exec(postingLine);
-        if (metaOnly && metaOnly[1].length >= 2 && !POSTING_RE.test(postingLine)) {
+        if (metaOnly && metaOnly[1].length >= 2 && !isAccountPostingLine(postingLine)) {
           break;
         }
         const postingMatch = POSTING_RE.exec(postingLine);

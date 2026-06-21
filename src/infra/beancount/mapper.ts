@@ -139,6 +139,52 @@ function openToAccount(open: ParsedOpen, index: number, isClosed: boolean): Acco
   };
 }
 
+function resolveSignedPostings(
+  txn: ParsedTransaction,
+  accountByPath: Map<string, AccountRecord>
+): TransactionPostingInput[] {
+  type Row = { accountId: string; currency: string; signed: number | null; account: AccountRecord };
+
+  const rows: Row[] = txn.postings.map((posting) => {
+    const account = accountByPath.get(posting.account);
+    if (!account) {
+      throw new Error(`Unknown account path in transaction ${metaString(txn.metadata, "id") ?? txn.date}: ${posting.account}`);
+    }
+    const currency = posting.currency ?? account.currency;
+    return {
+      accountId: account.id,
+      currency,
+      signed: posting.amount ?? null,
+      account
+    };
+  });
+
+  for (const currency of [...new Set(rows.map((row) => row.currency))]) {
+    const inCurrency = rows.filter((row) => row.currency === currency);
+    const implicit = inCurrency.filter((row) => row.signed === null);
+    const explicitSum = inCurrency
+      .filter((row) => row.signed !== null)
+      .reduce((total, row) => total + row.signed!, 0);
+
+    if (implicit.length === 1) {
+      implicit[0].signed = -explicitSum;
+    } else if (implicit.length > 1) {
+      throw new Error(`Multiple implicit postings for ${currency} in transaction.`);
+    }
+  }
+
+  return rows
+    .map((row) => {
+      const converted = signedToPosting(row.account, row.signed ?? 0);
+      return {
+        accountId: row.accountId,
+        type: converted.type,
+        amount: converted.amount
+      };
+    })
+    .filter((posting) => posting.amount > 0);
+}
+
 function parsedTransactionToDomain(
   txn: ParsedTransaction,
   accountByPath: Map<string, AccountRecord>,
@@ -150,21 +196,7 @@ function parsedTransactionToDomain(
   const sourceAccountPath = metaString(txn.metadata, "source-account-path");
   const sourceAccount = sourceAccountPath ? accountByPath.get(sourceAccountPath) : undefined;
 
-  const postings: TransactionPostingInput[] = txn.postings
-    .filter((posting) => posting.amount !== undefined)
-    .map((posting) => {
-      const account = accountByPath.get(posting.account);
-      if (!account) {
-        throw new Error(`Unknown account path in transaction ${id}: ${posting.account}`);
-      }
-      const converted = signedToPosting(account, posting.amount ?? 0);
-      return {
-        accountId: account.id,
-        type: converted.type,
-        amount: converted.amount
-      };
-    })
-    .filter((posting) => posting.amount > 0);
+  const postings = resolveSignedPostings(txn, accountByPath);
 
   const reconcileFromMeta = parseReconcile(metaString(txn.metadata, "reconcile"));
   const reconcileFromPosting = txn.postings
@@ -199,11 +231,16 @@ export function storeToDocument(store: LedgerStore, previous?: BeancountDocument
   const openDateByAccountId = new Map<string, string>();
 
   if (previous) {
-    previous.opens.forEach((open) => {
+    previous.opens.forEach((open, index) => {
       const id = metaString(open.metadata, "id");
       if (id) {
         pathByAccountId.set(id, open.account);
         openDateByAccountId.set(id, open.date);
+      }
+      const account = id ? store.accounts.find((item) => item.id === id) : store.accounts[index];
+      if (account) {
+        pathByAccountId.set(account.id, open.account);
+        openDateByAccountId.set(account.id, open.date);
       }
     });
   }

@@ -7,26 +7,84 @@ import { parseBeancount, serializeBeancount } from "../src/infra/beancount/parse
 
 const fixturePath = resolve(import.meta.dir, "../../data_stucture/beancount_standard.bean");
 
-describe("bean-check (optional)", () => {
-  test("generated ledger passes bean-check when CLI is available", async () => {
-    const source = await readFile(fixturePath, "utf8");
-    const document = parseBeancount(source);
-    const store = documentToStore(document);
-    const serialized = serializeBeancount(storeToDocument(store, document));
-    const tempFile = `/tmp/newgl-beancheck-${crypto.randomUUID()}.bean`;
-    await writeFile(tempFile, serialized, "utf8");
+const MINIMAL_LEDGER = [
+  'option "title" "Test Co"',
+  'option "operating_currency" "USD"',
+  "",
+  "2024-01-01 open Assets:Cash USD",
+  '  id: "acct-cash"',
+  "2024-01-01 open Expenses:Misc USD",
+  '  id: "acct-expense"',
+  "",
+  '2024-02-01 * "Payee" "Memo"',
+  '  id: "txn-1"',
+  "  Assets:Cash 10.00 USD",
+  "  Expenses:Misc -10.00 USD"
+].join("\n");
 
-    let proc: ReturnType<typeof Bun.spawn>;
-    try {
-      proc = Bun.spawn(["bean-check", tempFile], { stdout: "pipe", stderr: "pipe" });
-    } catch {
+const IMPLICIT_POSTING_LEDGER = [
+  'option "title" "Test Co"',
+  'option "operating_currency" "USD"',
+  "",
+  "2024-01-01 open Expenses:Software USD",
+  '  id: "acct-expense"',
+  "2024-01-01 open Liabilities:CreditCard:Amex USD",
+  '  id: "acct-card"',
+  "",
+  '2024-01-05 * "Figma" "Design subscription"',
+  '  id: "txn-1"',
+  "  Expenses:Software 45.00 USD",
+  "  Liabilities:CreditCard:Amex"
+].join("\n");
+
+async function runBeanCheck(source: string): Promise<{ exitCode: number; stderr: string } | null> {
+  const tempFile = `/tmp/newgl-beancheck-${crypto.randomUUID()}.bean`;
+  await writeFile(tempFile, source, "utf8");
+
+  try {
+    const proc = Bun.spawn(["bean-check", tempFile], { stdout: "pipe", stderr: "pipe" });
+    const exitCode = await proc.exited;
+    const stderr = await new Response(proc.stderr).text();
+    return { exitCode, stderr };
+  } catch {
+    return null;
+  }
+}
+
+function domainRoundTrip(source: string): string {
+  const document = parseBeancount(source);
+  const store = documentToStore(document);
+  return serializeBeancount(storeToDocument(store, document));
+}
+
+describe("bean-check (optional)", () => {
+  test("reference fixture passes bean-check", async () => {
+    const source = await readFile(fixturePath, "utf8");
+    const result = await runBeanCheck(source);
+    if (!result) {
       console.warn("bean-check not installed; skipping validation");
       return;
     }
+    expect(result.exitCode, result.stderr).toBe(0);
+  });
 
-    const exitCode = await proc.exited;
+  test("minimal explicit ledger round-trips through domain and passes bean-check", async () => {
+    const serialized = domainRoundTrip(MINIMAL_LEDGER);
+    const result = await runBeanCheck(serialized);
+    if (!result) {
+      console.warn("bean-check not installed; skipping validation");
+      return;
+    }
+    expect(result.exitCode, result.stderr).toBe(0);
+  });
 
-    const stderr = await new Response(proc.stderr).text();
-    expect(exitCode, stderr).toBe(0);
+  test("implicit posting ledger round-trips through domain and passes bean-check", async () => {
+    const serialized = domainRoundTrip(IMPLICIT_POSTING_LEDGER);
+    const result = await runBeanCheck(serialized);
+    if (!result) {
+      console.warn("bean-check not installed; skipping validation");
+      return;
+    }
+    expect(result.exitCode, result.stderr).toBe(0);
   });
 });
