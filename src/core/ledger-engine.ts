@@ -73,7 +73,7 @@ export function rebuildDerivedViews(store: LedgerStore): void {
   store.registerEntries = [];
 
   const ledgerTransactions = store.transactions.filter(
-    (transaction) => transaction.status !== "DRAFT" && transaction.status !== "DELETED"
+    (transaction) => transaction.status === "POSTED"
   );
 
   ledgerTransactions.forEach((transaction) => {
