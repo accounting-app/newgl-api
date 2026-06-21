@@ -1,4 +1,4 @@
-import { ACCOUNTING_CONFIG } from "@/config";
+import { ACCOUNTING_CONFIG } from "@/configuration";
 import type {
   Account,
   LedgerPosting,
