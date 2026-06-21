@@ -2,3 +2,4 @@ node_modules/
 .env
 data/*.bean.tmp
 *.log
+.DS_Store
