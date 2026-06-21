@@ -1,4 +1,5 @@
 import { ACCOUNTING_CONFIG } from "@/configuration";
+import { ValidationError } from "@/core/errors";
 import type {
   Account,
   LedgerPosting,
@@ -28,12 +29,14 @@ function sumBySide(postings: PostingLike[], side: PostingEntryType): number {
 
 export function validateDoubleEntry(postings: PostingLike[]): true {
   if (postings.length < 2) {
-    throw new Error("A transaction must have at least two postings (double-entry).");
+    throw new ValidationError("A transaction must have at least two postings (double-entry).");
   }
   const totalDebits = sumBySide(postings, "DEBIT");
   const totalCredits = sumBySide(postings, "CREDIT");
   if (Math.abs(totalDebits - totalCredits) > TOLERANCE) {
-    throw new Error(`Unbalanced transaction: debits ${totalDebits} ≠ credits ${totalCredits}`);
+    throw new ValidationError(
+      `Unbalanced transaction: debits ${totalDebits} do not equal credits ${totalCredits}.`
+    );
   }
   return true;
 }
@@ -105,10 +108,10 @@ export function getBankReconciliationSummary(entries: RegisterEntry[]): {
 
 export function validateTransactionAmounts(input: { payment?: number; deposit?: number }): true {
   if (input.payment !== undefined && input.payment < 0) {
-    throw new Error(`Payment amount must be positive (got ${input.payment}).`);
+    throw new ValidationError(`Payment amount must be positive (got ${input.payment}).`);
   }
   if (input.deposit !== undefined && input.deposit < 0) {
-    throw new Error(`Deposit amount must be positive (got ${input.deposit}).`);
+    throw new ValidationError(`Deposit amount must be positive (got ${input.deposit}).`);
   }
   return true;
 }
@@ -131,7 +134,7 @@ export function isEntryLocked(status: ReconcileStatus): boolean {
 export function assertEntryEditable(status: ReconcileStatus): void {
   if (isEntryLocked(status)) {
     const label = status === "R" ? "reconciled" : "cleared";
-    throw new Error(
+    throw new ValidationError(
       `This transaction is ${label} and cannot be edited. Create a reversal entry instead.`
     );
   }
@@ -140,7 +143,7 @@ export function assertEntryEditable(status: ReconcileStatus): void {
 export function assertEntryDeletable(status: ReconcileStatus): void {
   if (status !== "") {
     const label = status === "R" ? "reconciled" : "cleared";
-    throw new Error(`Only pending transactions can be deleted (this one is ${label}).`);
+    throw new ValidationError(`Only pending transactions can be deleted (this one is ${label}).`);
   }
 }
 

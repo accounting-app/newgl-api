@@ -2,7 +2,7 @@ import { createRoute, z } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import type { ServiceContainer } from "@/application/service-container";
-import { ledgerPostingSchema } from "@/domain/models";
+import { errorResponseSchema, ledgerPostingSchema } from "@/domain/models";
 
 const ledgerPostingsRoute = createRoute({
   method: "get",
@@ -25,6 +25,10 @@ const ledgerPostingsByTransactionRoute = createRoute({
     200: {
       content: { "application/json": { schema: z.array(ledgerPostingSchema) } },
       description: "Postings for transaction"
+    },
+    404: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "Transaction not found"
     }
   }
 });

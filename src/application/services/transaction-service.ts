@@ -1,5 +1,5 @@
 import type { LedgerRepository, TransactionService } from "@/application/contracts";
-import { NotFoundError } from "@/core/errors";
+import { NotFoundError, ValidationError } from "@/core/errors";
 import { validateDoubleEntry } from "@/core/accounting-reports";
 import { getPeriodIdForDate, validateTransactionPeriod } from "@/core/periods";
 import {
@@ -19,7 +19,9 @@ function ensureAccountsActive(store: import("@/domain/models").LedgerStore, tran
   transaction.postings.forEach((posting) => {
     const account = requireAccount(store, posting.accountId);
     if (account.status !== "ACTIVE") {
-      throw new Error("Closed or archived accounts cannot receive transactions.");
+      throw new ValidationError(
+        `Account ${account.id} is ${account.status.toLowerCase()} and cannot receive transactions.`
+      );
     }
   });
 }
@@ -31,7 +33,7 @@ export class TransactionServiceImpl implements TransactionService {
     return this.repository.mutate(async (store) => {
       validateDoubleEntry(input.postings);
       if (new Set(input.postings.map((posting) => posting.accountId)).size < 2) {
-        throw new Error("A transaction must affect at least two different accounts.");
+        throw new ValidationError("A transaction must affect at least two different accounts.");
       }
       validateTransactionPeriod(input.transactionDate);
 
@@ -79,7 +81,9 @@ export class TransactionServiceImpl implements TransactionService {
         throw new NotFoundError(`Transaction ${id} not found`);
       }
       if (transaction.status !== "DRAFT") {
-        throw new Error("Only DRAFT transactions can be posted.");
+        throw new ValidationError(
+          `Transaction ${id} is ${transaction.status} and cannot be posted. Only DRAFT transactions can be posted.`
+        );
       }
       ensureAccountsActive(store, transaction);
       validateDoubleEntry(transaction.postings);
@@ -102,7 +106,7 @@ export class TransactionServiceImpl implements TransactionService {
   async voidTransaction(id: string): Promise<Transaction> {
     const original = await this.getTransactionById(id);
     if (original.status === "VOIDED") {
-      throw new Error("Transaction is already voided.");
+      throw new ValidationError(`Transaction ${id} is already voided.`);
     }
 
     if (original.status === "DRAFT") {
@@ -119,7 +123,9 @@ export class TransactionServiceImpl implements TransactionService {
     }
 
     if (original.status !== "POSTED") {
-      throw new Error("Only DRAFT or POSTED transactions can be voided.");
+      throw new ValidationError(
+        `Transaction ${id} is ${original.status} and cannot be voided. Only DRAFT or POSTED transactions can be voided.`
+      );
     }
 
     const voidTx = await this.createTransaction({
@@ -157,10 +163,12 @@ export class TransactionServiceImpl implements TransactionService {
   async reverseTransaction(id: string): Promise<Transaction> {
     const original = await this.getTransactionById(id);
     if (original.status !== "POSTED") {
-      throw new Error("Only POSTED transactions can be reversed.");
+      throw new ValidationError(
+        `Transaction ${id} is ${original.status} and cannot be reversed. Only POSTED transactions can be reversed.`
+      );
     }
     if (original.reversedAt) {
-      throw new Error("Transaction has already been reversed.");
+      throw new ValidationError(`Transaction ${id} has already been reversed.`);
     }
 
     const reversal = await this.createTransaction({
@@ -201,7 +209,7 @@ export class TransactionServiceImpl implements TransactionService {
   async createTransfer(input: Omit<CreateTransactionInput, "type">): Promise<Transaction> {
     const accounts = new Set(input.postings.map((posting) => posting.accountId));
     if (accounts.size < 2) {
-      throw new Error("Transfers require source and destination accounts.");
+      throw new ValidationError("Transfers require at least two different accounts.");
     }
     const transaction = await this.createTransaction({ ...input, type: "TRANSFER" });
     return this.postTransaction(transaction.id);

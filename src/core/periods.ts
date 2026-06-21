@@ -1,4 +1,5 @@
 import type { RegisterEntry } from "@/domain/models";
+import { ValidationError } from "@/core/errors";
 
 export type PeriodStatus = "open" | "closed" | "locked";
 
@@ -36,7 +37,9 @@ export function findPeriodForDate(transactionDate: string): AccountingPeriod {
   const year = Number.parseInt(yearText, 10);
   const monthNumber = Number.parseInt(monthText, 10);
   if (!Number.isFinite(year) || !Number.isFinite(monthNumber) || monthNumber < 1 || monthNumber > 12) {
-    throw new Error(`Invalid transaction date: ${transactionDate}`);
+    throw new ValidationError(
+      `Invalid transaction date "${transactionDate}". Expected an ISO date (YYYY-MM-DD).`
+    );
   }
   const monthIndex = monthNumber - 1;
   const key = `${yearText}-${monthText.padStart(2, "0")}`;
@@ -57,10 +60,12 @@ export function getPeriodIdForDate(transactionDate: string): string {
 export function validateTransactionPeriod(transactionDate: string): AccountingPeriod {
   const period = findPeriodForDate(transactionDate);
   if (period.status === "closed") {
-    throw new Error(`Period ${period.name} is closed. Create a transaction in an open period instead.`);
+    throw new ValidationError(
+      `Period ${period.name} is closed. Create a transaction in an open period instead.`
+    );
   }
   if (period.status === "locked") {
-    throw new Error(`Period ${period.name} is locked by an administrator.`);
+    throw new ValidationError(`Period ${period.name} is locked by an administrator.`);
   }
   return period;
 }

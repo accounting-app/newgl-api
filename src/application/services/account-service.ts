@@ -1,6 +1,6 @@
 import type { AccountService } from "@/application/contracts";
 import type { LedgerRepository } from "@/application/contracts";
-import { NotFoundError } from "@/core/errors";
+import { ConflictError, NotFoundError } from "@/core/errors";
 import { buildChartAccount } from "@/core/ledger-engine";
 import type {
   Account,
@@ -27,7 +27,7 @@ export class AccountServiceImpl implements AccountService {
     return this.repository.mutate(async (store) => {
       const exists = store.accounts.find((account) => account.code === input.code);
       if (exists) {
-        throw new Error("Account code must be unique.");
+        throw new ConflictError(`Account code "${input.code}" is already in use.`);
       }
       const createdAt = nowIso();
       const account: Account = {

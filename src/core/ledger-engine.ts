@@ -2,6 +2,7 @@ import {
   computeBalanceImpact,
   postingFiscalPeriod
 } from "@/core/accounting-reports";
+import { NotFoundError } from "@/core/errors";
 import type {
   Account,
   ChartOfAccount,
@@ -62,7 +63,7 @@ export function buildChartAccount(account: Account, createdAt?: string): ChartOf
 export function requireAccount(store: LedgerStore, accountId: string): Account {
   const account = store.accounts.find((item) => item.id === accountId);
   if (!account) {
-    throw new Error(`Account ${accountId} not found`);
+    throw new NotFoundError(`Account ${accountId} not found`);
   }
   return account;
 }

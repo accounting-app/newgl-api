@@ -1,5 +1,5 @@
 import type { LedgerRepository, RegisterService } from "@/application/contracts";
-import { NotFoundError } from "@/core/errors";
+import { NotFoundError, ValidationError } from "@/core/errors";
 import {
   assertEntryDeletable,
   assertEntryEditable,
@@ -64,7 +64,7 @@ export class RegisterServiceImpl implements RegisterService {
       assertEntryEditable(entry.reconcileStatus);
       validateTransactionAmounts(input);
       if ((input.payment ?? 0) > 0 && (input.deposit ?? 0) > 0) {
-        throw new Error("Register entry cannot contain both payment and deposit.");
+        throw new ValidationError("Register entry cannot contain both a payment and a deposit.");
       }
       validateTransactionPeriod(input.date);
 
@@ -141,7 +141,7 @@ export class RegisterServiceImpl implements RegisterService {
       }
 
       if (input.counterpartyAccountId && input.counterpartyAccountId === entry.accountId) {
-        throw new Error("An account can't be its own offset account.");
+        throw new ValidationError("An account cannot be its own offset account.");
       }
 
       if (input.counterpartyAccountId && transaction) {
