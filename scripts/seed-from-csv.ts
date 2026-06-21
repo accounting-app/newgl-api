@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { loadConfig } from "../src/config";
+import { COMPANY, LEDGER_FILE } from "../src/configuration";
 import {
   accountPathFromName,
   qboCategoryFromCsvAccountType
@@ -37,7 +37,6 @@ function parseCsv(content: string): CsvRow[] {
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
   const csvPath = resolve(process.cwd(), "../data_stucture/imported_chart_of_accounts.csv");
   const csv = await readFile(csvPath, "utf8");
   const rows = parseCsv(csv);
@@ -46,7 +45,7 @@ async function main(): Promise<void> {
   const document: BeancountDocument = {
     preamble: [
       ";; -*- mode: beancount; -*-",
-      `option "title" "${config.company}"`,
+      `option "title" "${COMPANY}"`,
       'option "operating_currency" "USD"',
       "",
       `${openDate} commodity USD`,
@@ -75,9 +74,9 @@ async function main(): Promise<void> {
   };
 
   const output = serializeBeancount(document);
-  await mkdir(dirname(config.ledgerFile), { recursive: true });
-  await writeFile(config.ledgerFile, output, "utf8");
-  console.log(`Seeded ${rows.length} accounts into ${config.ledgerFile}`);
+  await mkdir(dirname(LEDGER_FILE), { recursive: true });
+  await writeFile(LEDGER_FILE, output, "utf8");
+  console.log(`Seeded ${rows.length} accounts into ${LEDGER_FILE}`);
 }
 
 main().catch((error) => {
