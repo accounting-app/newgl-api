@@ -61,13 +61,14 @@ interface LedgerRepository {
 Copy `.env.example` to `.env`:
 
 ```env
+APP_ENV=local | development | staging | production
 COMPANY=Maple Lane Studio LLC
 LEDGER_FILE=data/company.bean
 PORT=3001
 HOST=0.0.0.0
 ```
 
-Each company deployment gets its own `LEDGER_FILE` and UI instance (`NEXT_PUBLIC_API_URL`).
+Each company deployment has it own `LEDGER_FILE` `data/company.bean`
 
 ## Commands
 
