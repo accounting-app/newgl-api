@@ -29,7 +29,7 @@ const ledgerPostingsByTransactionRoute = createRoute({
   }
 });
 
-export function registerLedgerRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function ledgerRoutes(app: OpenAPIHono, services: ServiceContainer): void {
   app.openapi(ledgerPostingsRoute, async (c) => {
     const postings = await services.ledgerService.listPostings();
     return c.json(postings, 200);

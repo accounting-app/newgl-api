@@ -165,7 +165,7 @@ const transactionDetailRoute = createRoute({
   }
 });
 
-export function registerTransactionRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer): void {
   app.openapi(transactionListRoute, async (c) => {
     const transactions = await services.transactionService.listTransactions();
     return c.json(transactions, 200);

@@ -90,7 +90,7 @@ const accountRegisterRoute = createRoute({
   }
 });
 
-export function registerAccountRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function accountRoutes(app: OpenAPIHono, services: ServiceContainer): void {
   app.openapi(accountListRoute, async (c) => {
     const accounts = await services.accountService.listAccounts();
     return c.json(accounts, 200);
