@@ -1,22 +1,27 @@
-import { loadConfig } from "@/config";
 import { createServiceContainer } from "@/application/create-service-container";
 import { createLedgerRepository } from "@/infra/beancount/repository";
 import { createApp } from "@/http/app";
+import { APP_ENV, APP_CONFIG, APP_PORT } from "@/configuration";
 
-const config = loadConfig();
-const repository = createLedgerRepository(config.ledgerFile, config.company);
+const { LEDGER_FILE, COMPANY } = APP_CONFIG;
+
+const repository = createLedgerRepository(LEDGER_FILE, COMPANY);
 
 await repository.load();
 
 const services = createServiceContainer(repository);
 const app = createApp(services);
+const { fetch } = app;
+const port = APP_PORT;
 
-console.log(`[api] company=${config.company} ledger=${config.ledgerFile}`);
+console.log(
+  `[api] env=${APP_ENV} company=${COMPANY} ledger=${LEDGER_FILE}`
+);
 
 const server = Bun.serve({
-  port: config.port,
-  hostname: config.host,
-  fetch: app.fetch
+  fetch,
+  port
 });
+const { protocol, hostname } = server;
 
-console.log(`[api] listening on http://${server.hostname}:${server.port}`);
+console.log(`[api] listening on ${protocol}://${hostname}:${port}`);
