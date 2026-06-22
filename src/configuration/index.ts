@@ -12,7 +12,7 @@ export type AppConfig = {
 
 export const APP_ENV = process.env.APP_ENV as AppEnv || "local";
 export const APP_HOSTNAME = process.env.HOSTNAME || "0.0.0.0";
-export const APP_PORT = process.env.PORT || 3001;
+export const APP_PORT = process.env.PORT || 8080;
 export const COMPANY = process.env.COMPANY || "company";
 export const LEDGER_FILE = process.env.LEDGER_FILE || "data/company.bean";
 
