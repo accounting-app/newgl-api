@@ -25,4 +25,3 @@ const server = Bun.serve({
 const { protocol, hostname } = server;
 
 console.log(`[api] listening on ${protocol}://${hostname}:${port}`);
-console.log(`[api] process.env.PORT=${process.env.PORT}`);
