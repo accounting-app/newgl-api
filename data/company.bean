@@ -916,3 +916,17 @@ option "operating_currency" "USD"
   posted-at: "2026-06-20T16:33:38.304Z"
   period-id: "period-2026-06"
 
+2026-06-16 * ^TX-1003
+  id: "43c05c60-6fea-4cee-bc6a-b5cb469f56c1"
+  qbo-type: "DEPOSIT"
+  status: "POSTED"
+  ref: "TX-1003"
+  account-label: "Other Portfolio Income"
+  source-account-path: "Assets:Bank:Cash"
+  created-by: "user"
+  created-at: "2026-06-22T00:29:56.058Z"
+  updated-at: "2026-06-22T02:07:39.692Z"
+  posted-at: "2026-06-22T00:29:56.063Z"
+  period-id: "period-2026-06"
+  Assets:Bank:Cash 999.97 USD
+  Income:Other:Other-Portfolio-Income -999.97 USD
