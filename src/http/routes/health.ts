@@ -1,4 +1,3 @@
-import { Context } from "hono";
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
@@ -32,7 +31,7 @@ const healthRoute = createRoute({
 });
 
 export function healthRoutes(app: OpenAPIHono): void {
-  const handler  = (context: Context) => {
+  app.openapi(healthRoute, async (context) => {
     const data = {
       status: 200,
       timestamp: new Date().toISOString(),
@@ -44,8 +43,7 @@ export function healthRoutes(app: OpenAPIHono): void {
         // updated_at_commit_hash is the hash of the last commit to the ledger file.
         updated_at_commit_hash: '37f57f4994c10a5a0b95a595f68623352c029caa'
       }
-    }
+    };
     return context.json(data, 200);
-  }
-  app.openapi(healthRoute, handler);
+  });
 }

@@ -6,7 +6,7 @@ import { APP_ENV } from "@/configuration";
 const openApiDocument = {
   openapi: "3.1.0" as const,
   info: {
-    title: "Bank Register API",
+    title: "New GL API",
     version: "1.0.0"
   },
   servers: [{ url: "/api" }]
