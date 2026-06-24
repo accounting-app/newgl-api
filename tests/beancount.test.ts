@@ -8,7 +8,8 @@ import { parseBeancount, serializeBeancount } from "../src/infra/beancount/parse
 import { BeancountLedgerRepository } from "../src/infra/beancount/repository";
 import { createServiceContainer } from "../src/application/create-service-container";
 
-const fixturePath = resolve(import.meta.dir, "../../data_stucture/beancount_standard.bean");
+import { BEANCOUNT_STANDARD_FIXTURE } from "./helpers/constants";
+const fixturePath = BEANCOUNT_STANDARD_FIXTURE
 
 describe("beancount parser", () => {
   test("parses reference ledger", async () => {
