@@ -10,6 +10,6 @@ describe("OpenAPI", () => {
     expect(res.status).toBe(200);
     const doc = await readJson<{ openapi: string; info: { title: string } }>(res);
     expect(doc.openapi).toBe("3.1.0");
-    expect(doc.info.title).toBe("Bank Register API");
+    expect(doc.info.title).toBe("New GL API");
   });
 });
