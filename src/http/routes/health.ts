@@ -1,7 +1,10 @@
+import { Context } from "hono";
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import { APP_ENV, ACCOUNTING_CONFIG, COMPANY } from "@/configuration";
+import { APP_ENV, ACCOUNTING_CONFIG, COMPANY, LEDGER_FILE } from "@/configuration";
+
+
 
 const healthResponseSchema = zod.object({
   status: zod.number(),
@@ -10,6 +13,10 @@ const healthResponseSchema = zod.object({
   company: zod.string(),
   accounting: zod.object({
     basis: zod.enum(["cash", "accrual"]),
+  }),
+  ledger: zod.object({
+    filename: zod.string(),
+    updated_at_commit_hash: zod.string(),
   }),
 });
 
@@ -25,14 +32,20 @@ const healthRoute = createRoute({
 });
 
 export function healthRoutes(app: OpenAPIHono): void {
-  app.openapi(healthRoute, (response) => {
+  const handler  = (context: Context) => {
     const data = {
-        status: 200,
-        timestamp: new Date().toISOString(),
-        env: APP_ENV,
-        company: COMPANY,
-        accounting: ACCOUNTING_CONFIG,
+      status: 200,
+      timestamp: new Date().toISOString(),
+      env: APP_ENV,
+      company: COMPANY,
+      accounting: ACCOUNTING_CONFIG,
+      ledger: {
+        filename: LEDGER_FILE,
+        // updated_at_commit_hash is the hash of the last commit to the ledger file.
+        updated_at_commit_hash: '37f57f4994c10a5a0b95a595f68623352c029caa'
+      }
     }
-    return response.json(data, 200);
-  });
+    return context.json(data, 200);
+  }
+  app.openapi(healthRoute, handler);
 }
