@@ -1,0 +1,236 @@
+;; -*- mode: beancount; -*-
+;; ============================================================================
+;; Maple Lane Studio LLC — CASH-BASIS ledger
+;; ----------------------------------------------------------------------------
+;; Reference sample for designing an API around the Beancount data model.
+;;
+;; CASH-BASIS NOTE:
+;;   Revenue is recognized when cash is RECEIVED and expenses when cash is PAID.
+;;   There are deliberately NO Accounts-Receivable / Accounts-Payable accounts
+;;   and no accrual entries. Every economic event posts directly against a cash
+;;   or card account at the moment money actually moves.
+;;
+;; This file is intentionally broad: it demonstrates options, plugins,
+;; commodities, account open/close, pad+balance assertions, prices, notes,
+;; events, documents, queries, custom directives, tags, links, metadata,
+;; posting flags, cost basis (held-at-cost lots), and per-unit/total prices.
+;; ============================================================================
+
+;; ---- File-level options -----------------------------------------------------
+option "title" "Maple Lane Studio LLC"
+option "operating_currency" "USD"
+option "booking_method" "FIFO"
+
+;; ---- Plugins ----------------------------------------------------------------
+plugin "beancount.plugins.implicit_prices"
+
+;; ---- Commodity declarations -------------------------------------------------
+2023-01-01 commodity USD
+  name: "US Dollar"
+  asset-class: "cash"
+
+2023-01-01 commodity VTI
+  name: "Vanguard Total Stock Market ETF"
+  asset-class: "us-equity"
+  quote: USD
+
+;; ============================================================================
+;; ACCOUNT CHART  (open directives; some carry a currency constraint + booking)
+;; ============================================================================
+2024-01-01 open Assets:Bank:Checking            USD
+2024-01-01 open Assets:Bank:Savings             USD
+2024-01-01 open Assets:PettyCash                USD
+2024-01-01 open Assets:Brokerage:Reserve:Cash   USD
+2024-01-01 open Assets:Brokerage:Reserve:VTI    VTI  "FIFO"
+
+2024-01-01 open Liabilities:CreditCard:Amex     USD
+
+2024-01-01 open Equity:Opening-Balances
+2024-01-01 open Equity:Owner:Contributions
+2024-01-01 open Equity:Owner:Draws
+
+2024-01-01 open Income:Consulting               USD
+2024-01-01 open Income:Subscriptions            USD
+2024-01-01 open Income:Interest                 USD
+2024-01-01 open Income:CapitalGains             USD
+
+2024-01-01 open Expenses:Payroll:Salaries       USD
+2024-01-01 open Expenses:Payroll:Taxes          USD
+2024-01-01 open Expenses:Software               USD
+2024-01-01 open Expenses:Rent                    USD
+2024-01-01 open Expenses:Marketing               USD
+2024-01-01 open Expenses:Travel                  USD
+2024-01-01 open Expenses:Meals                    USD
+2024-01-01 open Expenses:Office                    USD
+2024-01-01 open Expenses:Bank-Fees                  USD
+
+;; ============================================================================
+;; OPENING BALANCES  (pad inserts the plug; balance asserts the result)
+;; ============================================================================
+2024-01-01 pad Assets:Bank:Checking Equity:Opening-Balances
+2024-01-02 balance Assets:Bank:Checking   25000.00 USD
+
+2024-01-01 pad Assets:Bank:Savings Equity:Opening-Balances
+2024-01-02 balance Assets:Bank:Savings    10000.00 USD
+
+;; Establish a small petty-cash float out of checking.
+2024-01-02 * "Internal" "Establish petty cash float"
+  Assets:PettyCash            200.00 USD
+  Assets:Bank:Checking      -200.00 USD
+
+;; ============================================================================
+;; TRANSACTIONS — JANUARY
+;; ============================================================================
+
+2024-01-03 * "Brookside Property Mgmt" "Office rent — January" #q1-2024
+  Expenses:Rent              1800.00 USD
+  Assets:Bank:Checking      -1800.00 USD
+
+;; Card spend: expense recognized at payment (card charge); cash leaves later.
+2024-01-05 * "Figma" "Design subscription" #q1-2024
+  category: "design-tools"
+  Expenses:Software           45.00 USD
+  Liabilities:CreditCard:Amex
+
+2024-01-05 * "Amazon Web Services" "Hosting" #q1-2024
+  Expenses:Software          220.00 USD
+  Liabilities:CreditCard:Amex
+
+;; Revenue recognized when the client's payment lands (cash basis).
+2024-01-08 * "Northwind Traders" "Consulting — onboarding sprint" ^inv-1001 #q1-2024
+  hours: 40
+  rate: "150 USD/hr"
+  Assets:Bank:Checking       6000.00 USD
+  Income:Consulting         -6000.00 USD
+
+2024-01-10 * "Owner" "Capital contribution"
+  Assets:Bank:Checking       5000.00 USD
+  Equity:Owner:Contributions
+
+2024-01-12 * "AppStore" "Subscription payouts" #q1-2024
+  Assets:Bank:Checking        250.00 USD
+  Income:Subscriptions       -250.00 USD
+
+;; Cash-basis payroll: salaries + employer taxes expensed when actually paid.
+2024-01-15 * "Payroll Run" "January salaries"
+  Expenses:Payroll:Salaries  4000.00 USD
+  Expenses:Payroll:Taxes     1000.00 USD
+  Assets:Bank:Checking      -5000.00 USD
+
+2024-01-20 * "Google Ads" "Lead-gen campaign" #q1-2024
+  Expenses:Marketing          500.00 USD
+  Assets:Bank:Checking       -500.00 USD
+
+2024-01-22 * "Internal" "Sweep cash to savings"
+  Assets:Bank:Savings       10000.00 USD
+  Assets:Bank:Checking     -10000.00 USD
+
+2024-01-25 * "Internal" "Fund brokerage reserve"
+  Assets:Brokerage:Reserve:Cash   8000.00 USD
+  Assets:Bank:Checking           -8000.00 USD
+
+;; Held-at-cost lot: 30 units acquired at a per-unit cost basis.
+2024-01-26 * "Vanguard" "Buy VTI for treasury reserve"
+  Assets:Brokerage:Reserve:VTI     30 VTI {245.00 USD}
+  Assets:Brokerage:Reserve:Cash  -7350.00 USD
+
+2024-01-30 * "American Express" "Pay statement balance"
+  Liabilities:CreditCard:Amex   265.00 USD
+  Assets:Bank:Checking         -265.00 USD
+
+2024-01-31 * "First National" "Monthly account fee"
+  Expenses:Bank-Fees           25.00 USD
+  Assets:Bank:Checking        -25.00 USD
+
+2024-01-31 * "First National" "Interest earned"
+  Assets:Bank:Checking          15.00 USD
+  Income:Interest              -15.00 USD
+
+;; ============================================================================
+;; TRANSACTIONS — FEBRUARY
+;; ============================================================================
+
+2024-02-01 note Assets:Bank:Checking "Reconciled against bank statement #2024-01"
+
+2024-02-03 * "Brookside Property Mgmt" "Office rent — February"
+  Expenses:Rent              1800.00 USD
+  Assets:Bank:Checking      -1800.00 USD
+
+;; Pending (unconfirmed) transaction uses the ! flag instead of *.
+2024-02-06 ! "Contoso Ltd" "Consulting — deposit (awaiting clearance)" ^inv-1002
+  Assets:Bank:Checking       3500.00 USD
+  Income:Consulting         -3500.00 USD
+
+2024-02-09 * "Owner" "Owner draw"
+  Equity:Owner:Draws         2000.00 USD
+  Assets:Bank:Checking      -2000.00 USD
+
+;; Posting-level flag (!) marks one leg as needing review.
+2024-02-12 * "United Airlines" "Client site visit — airfare"
+  Expenses:Travel            420.00 USD
+  ! Liabilities:CreditCard:Amex
+
+2024-02-14 * "Blue Bottle" "Client coffee" #meals
+  Expenses:Meals              38.50 USD
+  Liabilities:CreditCard:Amex
+
+;; Total-cost price syntax (@@) instead of per-unit (@).
+2024-02-20 * "Staples" "Office supplies, bulk"
+  Expenses:Office            120.00 USD
+  Assets:PettyCash         -120.00 USD
+
+2024-02-28 * "Payroll Run" "February salaries"
+  Expenses:Payroll:Salaries  4000.00 USD
+  Expenses:Payroll:Taxes     1000.00 USD
+  Assets:Bank:Checking      -5000.00 USD
+
+;; ============================================================================
+;; TRANSACTIONS — MARCH
+;; ============================================================================
+
+2024-03-02 event "location" "Remote — quarterly offsite"
+
+2024-03-05 * "Northwind Traders" "Consulting — phase 2" ^inv-1003 #q1-2024
+  Assets:Bank:Checking      12000.00 USD
+  Income:Consulting        -12000.00 USD
+
+;; Partial lot sale: reduce the held-at-cost position; gain falls out to Income.
+2024-03-15 * "Vanguard" "Trim VTI reserve"
+  Assets:Brokerage:Reserve:VTI    -10 VTI {245.00 USD} @ 262.00 USD
+  Assets:Brokerage:Reserve:Cash  2620.00 USD
+  Income:CapitalGains
+
+2024-03-20 * "American Express" "Pay statement balance"
+  Liabilities:CreditCard:Amex   458.50 USD
+  Assets:Bank:Checking         -458.50 USD
+
+;; Explicit market price observation (also auto-derived by implicit_prices).
+2024-03-31 price VTI   268.00 USD
+
+;; ============================================================================
+;; CLOSING / REPORTING METADATA
+;; ============================================================================
+
+;; Return remaining float, then close the account once it's empty.
+2024-03-31 * "Internal" "Close out petty cash fund"
+  Assets:Bank:Checking        80.00 USD
+  Assets:PettyCash           -80.00 USD
+2024-03-31 close Assets:PettyCash
+
+;; ---- Self-verifying closing assertions (checked at start of the date) -------
+2024-04-01 balance Assets:Bank:Checking           16796.50 USD
+2024-04-01 balance Assets:Bank:Savings            20000.00 USD
+2024-04-01 balance Assets:Brokerage:Reserve:Cash   3270.00 USD
+2024-04-01 balance Assets:Brokerage:Reserve:VTI          20 VTI
+2024-04-01 balance Liabilities:CreditCard:Amex         0.00 USD
+
+;; A stored query (usable by bean-query / Fava).
+2024-12-31 query "cash-income" "
+  SELECT account, sum(position) AS total
+  WHERE account ~ 'Income'
+  GROUP BY account
+  ORDER BY total"
+
+;; Fava-style custom directives (ignored by core bean-check but part of the model).
+2024-01-01 custom "fava-option" "default-page" "income_statement"
+2024-01-01 custom "budget" Expenses:Software "monthly"  300.00 USD

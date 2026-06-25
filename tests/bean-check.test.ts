@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 
 import { documentToStore, storeToDocument } from "../src/infra/beancount/mapper";
 import { parseBeancount, serializeBeancount } from "../src/infra/beancount/parser";
-
-const fixturePath = resolve(import.meta.dir, "../../data_stucture/beancount_standard.bean");
+import { BEANCOUNT_STANDARD_FIXTURE } from "./helpers/constants";
+const fixturePath = BEANCOUNT_STANDARD_FIXTURE
 
 const MINIMAL_LEDGER = [
   'option "title" "Test Co"',

@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 
 import type { ServiceContainer } from "@/application/service-container";
 import { errorHandler } from "@/http/error-handler";
-import { accountRoutes, ledgerRoutes, openApiRoutes, transactionRoutes, healthRoutes } from "@/http/routes";
+import { debugRoutes, accountRoutes, ledgerRoutes, openApiRoutes, transactionRoutes, healthRoutes } from "@/http/routes";
 
 export function createApp(services: ServiceContainer) {
   const app = new OpenAPIHono();
@@ -13,7 +13,7 @@ export function createApp(services: ServiceContainer) {
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type"]
+      allowHeaders: ["Content-Type", "X-Debug-Password"]
     })
   );
 
@@ -21,6 +21,7 @@ export function createApp(services: ServiceContainer) {
   
   openApiRoutes(app);
   healthRoutes(app);
+  debugRoutes(app);
 
   accountRoutes(app, services);
   transactionRoutes(app, services);

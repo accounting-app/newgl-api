@@ -1,13 +1,6 @@
-import { accountRoutes } from "@/http/routes/accounts";
-import { ledgerRoutes } from "@/http/routes/ledger";
-import { openApiRoutes } from "@/http/routes/openapi";
-import { transactionRoutes } from "@/http/routes/transactions";
-import { healthRoutes } from "@/http/routes/health";
-
-export {
-    accountRoutes,
-    ledgerRoutes,
-    openApiRoutes,
-    transactionRoutes,
-    healthRoutes
-}
+export { accountRoutes } from "@/http/routes/accounts";
+export { ledgerRoutes } from "@/http/routes/ledger";
+export { openApiRoutes } from "@/http/routes/openapi";
+export { transactionRoutes } from "@/http/routes/transactions";
+export { healthRoutes } from "@/http/routes/health";
+export { debugRoutes } from "@/http/routes/debug";

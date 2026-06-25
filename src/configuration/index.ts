@@ -15,6 +15,7 @@ export const APP_HOSTNAME = process.env.HOSTNAME || "0.0.0.0";
 export const APP_PORT = process.env.PORT || 8080;
 export const COMPANY = process.env.COMPANY || "company";
 export const LEDGER_FILE = process.env.LEDGER_FILE || "data/company.bean";
+export const DEBUG_LEDGER_PASSWORD = process.env.DEBUG_LEDGER_PASSWORD ?? "";
 
 // NOTE: Need to swap the accounting config, from UI -> API.
 export const ACCOUNTING_BASIS = process.env.ACCOUNTING_BASIS as AccountingBasis || "cash";

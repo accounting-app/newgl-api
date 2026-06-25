@@ -1,4 +1,4 @@
-import { createRoute, z } from "@hono/zod-openapi";
+import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import type { ServiceContainer } from "@/application/service-container";
@@ -19,7 +19,7 @@ const transactionListRoute = createRoute({
   path: "/api/transactions",
   responses: {
     200: {
-      content: { "application/json": { schema: z.array(transactionSchema) } },
+      content: { "application/json": { schema: zod.array(transactionSchema) } },
       description: "List transactions"
     }
   }
@@ -43,7 +43,7 @@ const transactionCreateRoute = createRoute({
 const transactionGetRoute = createRoute({
   method: "get",
   path: "/api/transactions/{transactionId}",
-  request: { params: z.object({ transactionId: z.string().uuid() }) },
+  request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Transaction" },
     404: { content: { "application/json": { schema: errorResponseSchema } }, description: "Not found" }
@@ -53,7 +53,7 @@ const transactionGetRoute = createRoute({
 const transactionPostRoute = createRoute({
   method: "post",
   path: "/api/transactions/{transactionId}/post",
-  request: { params: z.object({ transactionId: z.string().uuid() }) },
+  request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Posted" }
   }
@@ -62,7 +62,7 @@ const transactionPostRoute = createRoute({
 const transactionVoidRoute = createRoute({
   method: "post",
   path: "/api/transactions/{transactionId}/void",
-  request: { params: z.object({ transactionId: z.string().uuid() }) },
+  request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Voided" }
   }
@@ -71,7 +71,7 @@ const transactionVoidRoute = createRoute({
 const transactionReverseRoute = createRoute({
   method: "post",
   path: "/api/transactions/{transactionId}/reverse",
-  request: { params: z.object({ transactionId: z.string().uuid() }) },
+  request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Reversed" }
   }
@@ -102,7 +102,7 @@ const expenseRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: omitType.extend({ type: z.literal("EXPENSE").optional() })
+          schema: omitType.extend({ type: zod.literal("EXPENSE").optional() })
         }
       }
     }
@@ -116,7 +116,7 @@ const registerUpdateRoute = createRoute({
   method: "patch",
   path: "/api/register/{entryId}",
   request: {
-    params: z.object({ entryId: z.string().uuid() }),
+    params: zod.object({ entryId: zod.string().uuid() }),
     body: { content: { "application/json": { schema: updateRegisterEntryInputSchema } } }
   },
   responses: {
@@ -128,7 +128,7 @@ const registerReconcileRoute = createRoute({
   method: "post",
   path: "/api/register/{entryId}/reconcile",
   request: {
-    params: z.object({ entryId: z.string().uuid() }),
+    params: zod.object({ entryId: zod.string().uuid() }),
     body: { content: { "application/json": { schema: setReconcileStatusInputSchema } } }
   },
   responses: {
@@ -139,7 +139,7 @@ const registerReconcileRoute = createRoute({
 const registerDeleteRoute = createRoute({
   method: "delete",
   path: "/api/register/{entryId}",
-  request: { params: z.object({ entryId: z.string().uuid() }) },
+  request: { params: zod.object({ entryId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: registerEntrySchema } }, description: "Deleted entry" }
   }
@@ -148,15 +148,15 @@ const registerDeleteRoute = createRoute({
 const transactionDetailRoute = createRoute({
   method: "get",
   path: "/api/transactions/{transactionId}/detail",
-  request: { params: z.object({ transactionId: z.string().uuid() }) },
+  request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: {
       content: {
         "application/json": {
-          schema: z.object({
+          schema: zod.object({
             transaction: transactionSchema,
-            postings: z.array(ledgerPostingSchema),
-            registerEntries: z.array(registerEntrySchema)
+            postings: zod.array(ledgerPostingSchema),
+            registerEntries: zod.array(registerEntrySchema)
           })
         }
       },
@@ -166,86 +166,86 @@ const transactionDetailRoute = createRoute({
 });
 
 export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer): void {
-  app.openapi(transactionListRoute, async (c) => {
+  app.openapi(transactionListRoute, async (context) => {
     const transactions = await services.transactionService.listTransactions();
-    return c.json(transactions, 200);
+    return context.json(transactions, 200);
   });
 
-  app.openapi(transactionCreateRoute, async (c) => {
-    const input = c.req.valid("json");
+  app.openapi(transactionCreateRoute, async (context) => {
+    const input = context.req.valid("json");
     const transaction = await services.transactionService.createTransaction(input);
-    return c.json(transaction, 201);
+    return context.json(transaction, 201);
   });
 
-  app.openapi(transactionGetRoute, async (c) => {
-    const { transactionId } = c.req.valid("param");
+  app.openapi(transactionGetRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
     const transaction = await services.transactionService.getTransactionById(transactionId);
-    return c.json(transaction, 200);
+    return context.json(transaction, 200);
   });
 
-  app.openapi(transactionPostRoute, async (c) => {
-    const { transactionId } = c.req.valid("param");
+  app.openapi(transactionPostRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
     const transaction = await services.transactionService.postTransaction(transactionId);
-    return c.json(transaction, 200);
+    return context.json(transaction, 200);
   });
 
-  app.openapi(transactionVoidRoute, async (c) => {
-    const { transactionId } = c.req.valid("param");
+  app.openapi(transactionVoidRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
     const transaction = await services.transactionService.voidTransaction(transactionId);
-    return c.json(transaction, 200);
+    return context.json(transaction, 200);
   });
 
-  app.openapi(transactionReverseRoute, async (c) => {
-    const { transactionId } = c.req.valid("param");
+  app.openapi(transactionReverseRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
     const transaction = await services.transactionService.reverseTransaction(transactionId);
-    return c.json(transaction, 200);
+    return context.json(transaction, 200);
   });
 
-  app.openapi(transferRoute, async (c) => {
-    const input = c.req.valid("json");
+  app.openapi(transferRoute, async (context) => {
+    const input = context.req.valid("json");
     const transaction = await services.transactionService.createTransfer(input);
-    return c.json(transaction, 201);
+    return context.json(transaction, 201);
   });
 
-  app.openapi(depositRoute, async (c) => {
-    const input = c.req.valid("json");
+  app.openapi(depositRoute, async (context) => {
+    const input = context.req.valid("json");
     const transaction = await services.transactionService.createDeposit(input);
-    return c.json(transaction, 201);
+    return context.json(transaction, 201);
   });
 
-  app.openapi(expenseRoute, async (c) => {
-    const input = c.req.valid("json");
+  app.openapi(expenseRoute, async (context) => {
+    const input = context.req.valid("json");
     const transaction = await services.transactionService.createTransaction({
       ...input,
       type: "EXPENSE"
     });
     const posted = await services.transactionService.postTransaction(transaction.id);
-    return c.json(posted, 201);
+    return context.json(posted, 201);
   });
 
-  app.openapi(registerUpdateRoute, async (c) => {
-    const { entryId } = c.req.valid("param");
-    const input = c.req.valid("json");
+  app.openapi(registerUpdateRoute, async (context) => {
+    const { entryId } = context.req.valid("param");
+    const input = context.req.valid("json");
     const entry = await services.registerService.updateRegisterEntry(entryId, input);
-    return c.json(entry, 200);
+    return context.json(entry, 200);
   });
 
-  app.openapi(registerReconcileRoute, async (c) => {
-    const { entryId } = c.req.valid("param");
-    const { status } = c.req.valid("json");
+  app.openapi(registerReconcileRoute, async (context) => {
+    const { entryId } = context.req.valid("param");
+    const { status } = context.req.valid("json");
     const entry = await services.registerService.setReconcileStatus(entryId, status);
-    return c.json(entry, 200);
+    return context.json(entry, 200);
   });
 
-  app.openapi(registerDeleteRoute, async (c) => {
-    const { entryId } = c.req.valid("param");
+  app.openapi(registerDeleteRoute, async (context) => {
+    const { entryId } = context.req.valid("param");
     const entry = await services.registerService.deleteRegisterEntry(entryId);
-    return c.json(entry, 200);
+    return context.json(entry, 200);
   });
 
-  app.openapi(transactionDetailRoute, async (c) => {
-    const { transactionId } = c.req.valid("param");
+  app.openapi(transactionDetailRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
     const detail = await services.registerService.getTransactionDetail(transactionId);
-    return c.json(detail, 200);
+    return context.json(detail, 200);
   });
 }
