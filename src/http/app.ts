@@ -13,7 +13,7 @@ export function createApp(services: ServiceContainer) {
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type"]
+      allowHeaders: ["Content-Type", "X-Debug-Password"]
     })
   );
 
