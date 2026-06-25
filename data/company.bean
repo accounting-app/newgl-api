@@ -925,8 +925,8 @@ option "operating_currency" "USD"
   source-account-path: "Assets:Bank:Cash"
   created-by: "user"
   created-at: "2026-06-22T00:29:56.058Z"
-  updated-at: "2026-06-22T02:07:39.692Z"
+  updated-at: "2026-06-22T18:12:49.672Z"
   posted-at: "2026-06-22T00:29:56.063Z"
   period-id: "period-2026-06"
-  Assets:Bank:Cash 999.97 USD
-  Income:Other:Other-Portfolio-Income -999.97 USD
+  Assets:Bank:Cash 1000.00 USD
+  Income:Other:Other-Portfolio-Income -1000.00 USD
