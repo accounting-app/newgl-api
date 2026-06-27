@@ -2,6 +2,7 @@ import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import { APP_ENV, ACCOUNTING_CONFIG, COMPANY, LEDGER_FILE } from "@/configuration";
+import { UPDATE_LEDGER_FILE_COMMIT_HASH } from "@/configuration/constants";
 
 
 
@@ -41,7 +42,7 @@ export function healthRoutes(app: OpenAPIHono): void {
       ledger: {
         filename: LEDGER_FILE,
         // updated_at_commit_hash is the hash of the last commit to the ledger file.
-        updated_at_commit_hash: '37f57f4994c10a5a0b95a595f68623352c029caa'
+        updated_at_commit_hash: UPDATE_LEDGER_FILE_COMMIT_HASH
       }
     };
     return context.json(data, 200);
