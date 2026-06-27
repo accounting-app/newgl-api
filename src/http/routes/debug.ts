@@ -47,7 +47,7 @@ export function debugRoutes(app: OpenAPIHono): void {
     console.log('isValid: ', isValid)
     console.log('!isValid: ', !isValid)
 
-    if (!expectedDebugLedgerPassword || !isTestMode || isAppEnvProduction) {
+    if (!expectedDebugLedgerPassword || !isTestMode) {
       return context.json({ expectedDebugLedgerPassword, isAppEnvProduction, isTestMode }, 404);
     }
 
