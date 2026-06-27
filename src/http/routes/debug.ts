@@ -37,15 +37,19 @@ export function debugRoutes(app: OpenAPIHono): void {
     console.log('Object.keys(context): ', Object.keys(context))
     console.log('context.req.header("x-debug-password"): ', context.req.header("x-debug-password"))
     // return context.text("OK", 200);
-    if (appEnv === "production" || !expectedPassword) {
+    const isAppEnvProduction = appEnv === "production";
+    console.log('isAppEnvProduction: ', isAppEnvProduction)
+    const { "x-debug-password": password } = context.req.valid("header");
+    const isValid = isValidPassword(password, expectedPassword)
+    console.log('password: ', password)
+    console.log('isValid: ', isValid)
+    console.log('!isValid: ', !isValid)
+
+    if (isAppEnvProduction || !expectedPassword) {
+      
       return context.text("Not found", 404);
     }
 
-    const { "x-debug-password": password } = context.req.valid("header");
-    console.log('password: ', password)
-    const isValid = isValidPassword(password, expectedPassword)
-    console.log('isValid: ', isValid)
-    console.log('!isValid: ', !isValid)
     if (!isValid) {
       return context.text("Unauthorized", 401);
     }
