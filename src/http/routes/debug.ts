@@ -47,7 +47,15 @@ export function debugRoutes(app: OpenAPIHono): void {
     // }
     const DEBUG_LEDGER_PASSWORD = process.env.DEBUG_LEDGER_PASSWORD ?? "";
     if (!DEBUG_LEDGER_PASSWORD || !isTestModeOrNotAllowed) {
-      return context.json({APP_ENV, DEBUG_PASSWORD_HEADER, DEBUG_LEDGER_PASSWORD, ALLOW_LEDGER_READ, TEST_MODE }, 404);
+      const data = {
+        APP_ENV,
+        DEBUG_PASSWORD_HEADER,
+        DEBUG_LEDGER_PASSWORD,
+        ALLOW_LEDGER_READ,
+        TEST_MODE,
+        TYPESTAMP: new Date().toISOString(),
+      }
+      return context.json(data, 404);
     }
 
     const isValid = isValidPassword(DEBUG_PASSWORD_HEADER, DEBUG_LEDGER_PASSWORD)
