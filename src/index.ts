@@ -18,7 +18,7 @@ console.log(
 );
 
 const server = Bun.serve({
-  fetch,
+  fetch: (request, server) => fetch(request, server),
   port,
   hostname: APP_HOSTNAME,
 });

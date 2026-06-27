@@ -1,6 +1,8 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 
+import { requestLogger } from "@/http/middleware";
+
 import type { ServiceContainer } from "@/application/service-container";
 import { errorHandler } from "@/http/error-handler";
 import { debugRoutes, accountRoutes, ledgerRoutes, openApiRoutes, transactionRoutes, healthRoutes } from "@/http/routes";
@@ -16,6 +18,7 @@ export function createApp(services: ServiceContainer) {
       allowHeaders: ["Content-Type", "X-Debug-Password"]
     })
   );
+  app.use("*", requestLogger());
 
   app.onError(errorHandler);
   
