@@ -31,22 +31,27 @@ export function debugRoutes(app: OpenAPIHono): void {
     const appEnv = process.env.APP_ENV ?? "local";
     const expectedPassword = process.env.DEBUG_LEDGER_PASSWORD ?? "";
     const ledgerFile = process.env.LEDGER_FILE ?? "data/company.bean";
+    console.log('appEnv: ', appEnv)
+    console.log('expectedPassword: ', expectedPassword)
+    console.log('ledgerFile: ', ledgerFile)
+    console.log('Object.keys(context): ', Object.keys(context))
+    console.log('context.req.header("x-debug-password"): ', context.req.header("x-debug-password"))
+    return context.text("OK", 200);
+    // if (appEnv === "production" || !expectedPassword) {
+    //   return context.text("Not found", 404);
+    // }
 
-    if (appEnv === "production" || !expectedPassword) {
-      return context.text("Not found", 404);
-    }
+    // const { "x-debug-password": password } = context.req.valid("header");
 
-    const { "x-debug-password": password } = context.req.valid("header");
+    // if (!isValidPassword(password, expectedPassword)) {
+    //   return context.text("Unauthorized", 401);
+    // }
 
-    if (!isValidPassword(password, expectedPassword)) {
-      return context.text("Unauthorized", 401);
-    }
+    // const file = Bun.file(ledgerFile);
+    // if (!(await file.exists())) {
+    //   return context.text(`Ledger file not found: ${ledgerFile}`, 404);
+    // }
 
-    const file = Bun.file(ledgerFile);
-    if (!(await file.exists())) {
-      return context.text(`Ledger file not found: ${ledgerFile}`, 404);
-    }
-
-    return context.text(await file.text(), 200);
+    // return context.text(await file.text(), 200);
   });
 }
