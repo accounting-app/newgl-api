@@ -72,12 +72,22 @@ describe("GET /api/debug/ledger-source", () => {
     process.env.DEBUG_LEDGER_PASSWORD = TEST_PASSWORD;
   });
 
-  test.skip("returns 404 in production", async () => {
-    process.env.APP_ENV = "production";
+  // NOTE: Commentted out because it's not needed for now. Will be used in the future.
+  // test("returns 404 in production", async () => {
+  //   process.env.APP_ENV = "production";
+  //   const res = await app.request("/api/debug/ledger-source", {
+  //     headers: { "X-Debug-Password": TEST_PASSWORD },
+  //   });
+  //   expect(res.status).toBe(404);
+  //   process.env.APP_ENV = "local";
+  // });
+
+  test("returns 404 when allow ledger read is false", async () => {
+    process.env.ALLOW_LEDGER_READ = "false";
     const res = await app.request("/api/debug/ledger-source", {
       headers: { "X-Debug-Password": TEST_PASSWORD },
     });
     expect(res.status).toBe(404);
-    process.env.APP_ENV = "local";
+    process.env.ALLOW_LEDGER_READ = "true";
   });
 });

@@ -29,30 +29,30 @@ const ledgerSourceRoute = createRoute({
 
 export function debugRoutes(app: OpenAPIHono): void {
   app.openapi(ledgerSourceRoute, async (context) => {
-    const appEnv = APP_ENV ?? "local";
-    const expectedDebugLedgerPassword = process.env.DEBUG_LEDGER_PASSWORD ?? "";
+
+
     const ledgerFile = process.env.LEDGER_FILE ?? "data/company.bean";
-    console.log('appEnv: ', appEnv)
-    console.log('debugLedgerPassword: ', expectedDebugLedgerPassword)
-    console.log('ledgerFile: ', ledgerFile)
-    console.log('Object.keys(context): ', Object.keys(context))
-    console.log('context.req.header("x-debug-password"): ', context.req.header("x-debug-password"))
-
-    const isAppEnvProduction = appEnv === "production";
-    const isTestMode = process.env.TEST_MODE === "true";
-    console.log('isAppEnvProduction: ', isAppEnvProduction)
-    const { "x-debug-password": password } = context.req.valid("header");
-    const isValid = isValidPassword(password, expectedDebugLedgerPassword)
-    console.log('password: ', password)
-    console.log('isValid: ', isValid)
-    console.log('!isValid: ', !isValid)
-
-    if (!expectedDebugLedgerPassword || !isTestMode) {
-      return context.json({ expectedDebugLedgerPassword, isAppEnvProduction, isTestMode }, 404);
+     const { "x-debug-password": DEBUG_PASSWORD_HEADER } = context.req.valid("header");
+   
+    const ALLOW_LEDGER_READ = process.env.ALLOW_LEDGER_READ ?? "false";
+    const isAllowedLedgerRead = ALLOW_LEDGER_READ === "true";
+    const TEST_MODE = process.env.TEST_MODE ?? "false";
+    const isTestMode = TEST_MODE === "true";
+    const isTestModeOrNotAllowed =  isTestMode && isAllowedLedgerRead
+   
+    // Note: Uncomment this to return 404 in production.
+    // const isAppEnvProduction = APP_ENV  === "production";
+    // if(isAppEnvProduction) {
+    //   return context.json({APP_ENV, DEBUG_PASSWORD_HEADER, ALLOW_LEDGER_READ, TEST_MODE }, 404);
+    // }
+    const DEBUG_LEDGER_PASSWORD = process.env.DEBUG_LEDGER_PASSWORD ?? "";
+    if (!DEBUG_LEDGER_PASSWORD || !isTestModeOrNotAllowed) {
+      return context.json({APP_ENV, DEBUG_PASSWORD_HEADER, DEBUG_LEDGER_PASSWORD, ALLOW_LEDGER_READ, TEST_MODE }, 404);
     }
 
+    const isValid = isValidPassword(DEBUG_PASSWORD_HEADER, DEBUG_LEDGER_PASSWORD)
     if (!isValid) {
-      return context.text("Unauthorized", 401);
+      return context.json({ error: "Unauthorized" }, 401);
     }
 
     const file = Bun.file(ledgerFile);
