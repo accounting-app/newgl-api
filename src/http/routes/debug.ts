@@ -30,10 +30,10 @@ const ledgerSourceRoute = createRoute({
 export function debugRoutes(app: OpenAPIHono): void {
   app.openapi(ledgerSourceRoute, async (context) => {
     const appEnv = APP_ENV ?? "local";
-    const expectedPassword = process.env.DEBUG_LEDGER_PASSWORD ?? "";
+    const expectedDebugLedgerPassword = process.env.DEBUG_LEDGER_PASSWORD ?? "";
     const ledgerFile = process.env.LEDGER_FILE ?? "data/company.bean";
     console.log('appEnv: ', appEnv)
-    console.log('expectedPassword: ', expectedPassword)
+    console.log('debugLedgerPassword: ', expectedDebugLedgerPassword)
     console.log('ledgerFile: ', ledgerFile)
     console.log('Object.keys(context): ', Object.keys(context))
     console.log('context.req.header("x-debug-password"): ', context.req.header("x-debug-password"))
@@ -42,13 +42,13 @@ export function debugRoutes(app: OpenAPIHono): void {
     const isTestMode = process.env.TEST_MODE === "true";
     console.log('isAppEnvProduction: ', isAppEnvProduction)
     const { "x-debug-password": password } = context.req.valid("header");
-    const isValid = isValidPassword(password, expectedPassword)
+    const isValid = isValidPassword(password, expectedDebugLedgerPassword)
     console.log('password: ', password)
     console.log('isValid: ', isValid)
     console.log('!isValid: ', !isValid)
 
-    if (!expectedPassword || !isTestMode || isAppEnvProduction) {
-      return context.text("Not found", 404);
+    if (!expectedDebugLedgerPassword || !isTestMode || isAppEnvProduction) {
+      return context.json({ expectedDebugLedgerPassword, isAppEnvProduction, isTestMode }, 404);
     }
 
     if (!isValid) {
