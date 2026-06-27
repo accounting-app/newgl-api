@@ -1,6 +1,7 @@
-import { timingSafeEqual } from "node:crypto";
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+
+import { isValidPassword } from "@/shared/utils/validate";
 
 const ledgerSourceRoute = createRoute({
   method: "get",
@@ -24,13 +25,6 @@ const ledgerSourceRoute = createRoute({
   },
 });
 
-function isValidPassword(provided: string, expected: string): boolean {
-  if (!expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 export function debugRoutes(app: OpenAPIHono): void {
   app.openapi(ledgerSourceRoute, async (context) => {
