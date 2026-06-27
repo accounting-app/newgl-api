@@ -2,6 +2,7 @@ import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import { isValidPassword } from "@/shared/utils/validate";
+import { APP_ENV } from "@/configuration";
 
 const ledgerSourceRoute = createRoute({
   method: "get",
@@ -28,7 +29,7 @@ const ledgerSourceRoute = createRoute({
 
 export function debugRoutes(app: OpenAPIHono): void {
   app.openapi(ledgerSourceRoute, async (context) => {
-    const appEnv = process.env.APP_ENV ?? "local";
+    const appEnv = APP_ENV ?? "local";
     const expectedPassword = process.env.DEBUG_LEDGER_PASSWORD ?? "";
     const ledgerFile = process.env.LEDGER_FILE ?? "data/company.bean";
     console.log('appEnv: ', appEnv)
@@ -36,8 +37,9 @@ export function debugRoutes(app: OpenAPIHono): void {
     console.log('ledgerFile: ', ledgerFile)
     console.log('Object.keys(context): ', Object.keys(context))
     console.log('context.req.header("x-debug-password"): ', context.req.header("x-debug-password"))
-    // return context.text("OK", 200);
+
     const isAppEnvProduction = appEnv === "production";
+    const isTestMode = process.env.TEST_MODE === "true";
     console.log('isAppEnvProduction: ', isAppEnvProduction)
     const { "x-debug-password": password } = context.req.valid("header");
     const isValid = isValidPassword(password, expectedPassword)
@@ -45,8 +47,7 @@ export function debugRoutes(app: OpenAPIHono): void {
     console.log('isValid: ', isValid)
     console.log('!isValid: ', !isValid)
 
-    if (isAppEnvProduction || !expectedPassword) {
-      
+    if (!expectedPassword || !isTestMode || isAppEnvProduction) {
       return context.text("Not found", 404);
     }
 
