@@ -7,9 +7,9 @@ const ledgerSourceRoute = createRoute({
   method: "get",
   path: "/api/debug/ledger-source",
   request: {
-    // headers: zod.object({
-    //   "x-debug-password": zod.string().min(1),
-    // }),
+    headers: zod.object({
+      "x-debug-password": zod.string().min(1),
+    }),
   },
   responses: {
     200: {
@@ -41,11 +41,14 @@ export function debugRoutes(app: OpenAPIHono): void {
       return context.text("Not found", 404);
     }
 
-    // const { "x-debug-password": password } = context.req.valid("header");
-
-    // if (!isValidPassword(password, expectedPassword)) {
-    //   return context.text("Unauthorized", 401);
-    // }
+    const { "x-debug-password": password } = context.req.valid("header");
+    console.log('password: ', password)
+    const isValid = isValidPassword(password, expectedPassword)
+    console.log('isValid: ', isValid)
+    console.log('!isValid: ', !isValid)
+    if (!isValid) {
+      return context.text("Unauthorized", 401);
+    }
 
     const file = Bun.file(ledgerFile);
     if (!(await file.exists())) {
