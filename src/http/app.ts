@@ -5,7 +5,7 @@ import { requestLogger } from "@/http/middleware";
 
 import type { ServiceContainer } from "@/application/service-container";
 import { errorHandler } from "@/http/error-handler";
-import { debugRoutes, accountRoutes, ledgerRoutes, openApiRoutes, transactionRoutes, healthRoutes } from "@/http/routes";
+import { debugRoutes, accountRoutes, ledgerRoutes, openApiRoutes, transactionRoutes, healthRoutes, ledgerDownloadRoutes } from "@/http/routes";
 
 export function createApp(services: ServiceContainer) {
   const app = new OpenAPIHono();
@@ -29,6 +29,6 @@ export function createApp(services: ServiceContainer) {
   accountRoutes(app, services);
   transactionRoutes(app, services);
   ledgerRoutes(app, services);
-
+  ledgerDownloadRoutes(app);
   return app;
 }
