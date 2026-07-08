@@ -4,3 +4,4 @@ export { openApiRoutes } from "@/http/routes/openapi";
 export { transactionRoutes } from "@/http/routes/transactions";
 export { healthRoutes } from "@/http/routes/health";
 export { debugRoutes } from "@/http/routes/debug";
+export { ledgerDownloadRoutes } from "@/http/routes/ledger-download";
