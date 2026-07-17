@@ -5,10 +5,13 @@ import type { ServiceContainer } from "@/application/service-container";
 import {
   createTransactionInputSchema,
   errorResponseSchema,
+  importTransactionsInputSchema,
+  importTransactionsResultSchema,
   ledgerPostingSchema,
   registerEntrySchema,
   setReconcileStatusInputSchema,
   transactionSchema,
+  transactionStatusSchema,
   updateRegisterEntryInputSchema
 } from "@/domain/models";
 
@@ -17,11 +20,32 @@ const omitType = createTransactionInputSchema.omit({ type: true });
 const transactionListRoute = createRoute({
   method: "get",
   path: "/api/transactions",
+  request: {
+    query: zod.object({
+      status: transactionStatusSchema.optional(),
+      sourceAccountId: zod.string().uuid().optional()
+    })
+  },
   responses: {
     200: {
       content: { "application/json": { schema: zod.array(transactionSchema) } },
       description: "List transactions"
     }
+  }
+});
+
+const transactionImportRoute = createRoute({
+  method: "post",
+  path: "/api/transactions/import",
+  request: {
+    body: { content: { "application/json": { schema: importTransactionsInputSchema } } }
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: importTransactionsResultSchema } },
+      description: "Import result"
+    },
+    400: { content: { "application/json": { schema: errorResponseSchema } }, description: "Error" }
   }
 });
 
@@ -167,8 +191,17 @@ const transactionDetailRoute = createRoute({
 
 export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer): void {
   app.openapi(transactionListRoute, async (context) => {
-    const transactions = await services.transactionService.listTransactions();
+    const { status, sourceAccountId } = context.req.valid("query");
+    const transactions = await services.transactionService.listTransactions(
+      status || sourceAccountId ? { status, sourceAccountId } : undefined
+    );
     return context.json(transactions, 200);
+  });
+
+  app.openapi(transactionImportRoute, async (context) => {
+    const input = context.req.valid("json");
+    const result = await services.transactionService.importTransactions(input);
+    return context.json(result, 200);
   });
 
   app.openapi(transactionCreateRoute, async (context) => {

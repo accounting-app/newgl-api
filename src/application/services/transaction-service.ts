@@ -1,4 +1,4 @@
-import type { LedgerRepository, TransactionService } from "@/application/contracts";
+import type { LedgerRepository, ListTransactionsFilter, TransactionService } from "@/application/contracts";
 import { NotFoundError, ValidationError } from "@/core/errors";
 import { validateDoubleEntry } from "@/core/accounting-reports";
 import { getPeriodIdForDate, validateTransactionPeriod } from "@/core/periods";
@@ -7,7 +7,14 @@ import {
   requireAccount,
   updateAccountBalances
 } from "@/core/ledger-engine";
-import type { CreateTransactionInput, Transaction } from "@/domain/models";
+import type {
+  CreateTransactionInput,
+  ImportTransactionRowResult,
+  ImportTransactionsInput,
+  ImportTransactionsResult,
+  Transaction,
+  TransactionPostingInput
+} from "@/domain/models";
 import { createId } from "@/shared/utils/id";
 import { nowIso, todayIsoDate } from "@/shared/utils/date";
 
@@ -70,8 +77,16 @@ export class TransactionServiceImpl implements TransactionService {
     return transaction;
   }
 
-  async listTransactions(): Promise<Transaction[]> {
-    return [...this.repository.getStore().transactions];
+  async listTransactions(filter?: ListTransactionsFilter): Promise<Transaction[]> {
+    const transactions = this.repository.getStore().transactions;
+    if (!filter) {
+      return [...transactions];
+    }
+    return transactions.filter((transaction) => {
+      if (filter.status && transaction.status !== filter.status) return false;
+      if (filter.sourceAccountId && transaction.sourceAccountId !== filter.sourceAccountId) return false;
+      return true;
+    });
   }
 
   async postTransaction(id: string): Promise<Transaction> {
@@ -213,5 +228,91 @@ export class TransactionServiceImpl implements TransactionService {
     }
     const transaction = await this.createTransaction({ ...input, type: "TRANSFER" });
     return this.postTransaction(transaction.id);
+  }
+
+  async importTransactions(input: ImportTransactionsInput): Promise<ImportTransactionsResult> {
+    return this.repository.mutate(async (store) => {
+      const results: ImportTransactionRowResult[] = [];
+
+      for (const row of input.rows) {
+        try {
+          const isOutflow = row.amount < 0;
+          const amount = Math.abs(row.amount);
+          if (amount === 0) {
+            throw new ValidationError("Amount must not be zero.");
+          }
+          if (input.mainAccountId === row.categoryAccountId) {
+            throw new ValidationError("Main account and category account must differ.");
+          }
+
+          const postings: TransactionPostingInput[] = isOutflow
+            ? [
+                { accountId: input.mainAccountId, type: "CREDIT", amount },
+                { accountId: row.categoryAccountId, type: "DEBIT", amount }
+              ]
+            : [
+                { accountId: input.mainAccountId, type: "DEBIT", amount },
+                { accountId: row.categoryAccountId, type: "CREDIT", amount }
+              ];
+
+          validateDoubleEntry(postings);
+          validateTransactionPeriod(row.transactionDate);
+
+          postings.forEach((posting) => {
+            const account = requireAccount(store, posting.accountId);
+            if (account.status !== "ACTIVE") {
+              throw new ValidationError(
+                `Account ${account.id} is ${account.status.toLowerCase()} and cannot receive transactions.`
+              );
+            }
+          });
+
+          const createdAt = nowIso();
+          const transaction: Transaction = {
+            id: createId(),
+            type: isOutflow ? "EXPENSE" : "DEPOSIT",
+            status: "POSTED",
+            transactionDate: row.transactionDate,
+            referenceNumber: row.referenceNumber,
+            memo: row.memo,
+            payee: row.payee,
+            sourceAccountId: input.mainAccountId,
+            periodId: getPeriodIdForDate(row.transactionDate),
+            postings,
+            auditLog: [auditEntry("created"), auditEntry("posted")],
+            createdAt,
+            updatedAt: createdAt,
+            postedAt: createdAt,
+            createdBy: "user"
+          };
+          store.transactions.push(transaction);
+
+          results.push({ clientRowId: row.clientRowId, status: "CREATED", transactionId: transaction.id });
+        } catch (err) {
+          results.push({
+            clientRowId: row.clientRowId,
+            status: "FAILED",
+            error: err instanceof Error ? err.message : "Unknown error"
+          });
+        }
+      }
+
+      rebuildDerivedViews(store);
+      updateAccountBalances(
+        store,
+        results
+          .filter((result) => result.status === "CREATED")
+          .flatMap((result) => {
+            const transaction = store.transactions.find((item) => item.id === result.transactionId);
+            return transaction ? transaction.postings.map((posting) => posting.accountId) : [];
+          })
+      );
+
+      return {
+        succeeded: results.filter((result) => result.status === "CREATED").length,
+        failed: results.filter((result) => result.status === "FAILED").length,
+        results
+      };
+    });
   }
 }

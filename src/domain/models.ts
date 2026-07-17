@@ -257,6 +257,39 @@ export const createTransactionInputSchema = z.object({
   postings: z.array(transactionPostingInputSchema).min(2)
 });
 
+export const importTransactionRowInputSchema = z.object({
+  clientRowId: z.string(),
+  transactionDate: z.string(),
+  payee: z.string().optional(),
+  memo: z.string().optional(),
+  amount: z.number(),
+  categoryAccountId: z.string().uuid(),
+  referenceNumber: z.string().optional()
+});
+
+export const importTransactionsInputSchema = z.object({
+  mainAccountId: z.string().uuid(),
+  rows: z.array(importTransactionRowInputSchema).min(1).max(500)
+});
+
+export const importTransactionRowResultSchema = z.object({
+  clientRowId: z.string(),
+  status: z.enum(["CREATED", "FAILED"]),
+  transactionId: z.string().uuid().optional(),
+  error: z.string().optional()
+});
+
+export const importTransactionsResultSchema = z.object({
+  succeeded: z.number(),
+  failed: z.number(),
+  results: z.array(importTransactionRowResultSchema)
+});
+
+export type ImportTransactionRowInput = z.infer<typeof importTransactionRowInputSchema>;
+export type ImportTransactionsInput = z.infer<typeof importTransactionsInputSchema>;
+export type ImportTransactionRowResult = z.infer<typeof importTransactionRowResultSchema>;
+export type ImportTransactionsResult = z.infer<typeof importTransactionsResultSchema>;
+
 export const updateRegisterEntryInputSchema = z.object({
   date: z.string(),
   refNumber: z.string().optional(),

@@ -119,4 +119,80 @@ describe("HTTP API", () => {
     const postings = await readJson<Array<{ amount: number }>>(res);
     expect(postings.length).toBeGreaterThan(0);
   });
+
+  test("POST /api/transactions/import creates and posts transactions immediately", async () => {
+    const bankRes = await app.request("/api/accounts", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ code: "1030", name: "Import Checking", category: "BANK" })
+    });
+    const bank = await readJson<{ id: string }>(bankRes);
+
+    const expenseRes = await app.request("/api/accounts", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ code: "5030", name: "Import Office", category: "EXPENSE" })
+    });
+    const expenseAccount = await readJson<{ id: string }>(expenseRes);
+
+    const importRes = await app.request("/api/transactions/import", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({
+        mainAccountId: bank.id,
+        rows: [
+          {
+            clientRowId: "row-1",
+            transactionDate: "2024-02-01",
+            payee: "Starbucks",
+            amount: -4.5,
+            categoryAccountId: expenseAccount.id
+          },
+          {
+            clientRowId: "row-2",
+            transactionDate: "2024-02-02",
+            payee: "Employer Inc",
+            amount: 2500,
+            categoryAccountId: expenseAccount.id
+          }
+        ]
+      })
+    });
+
+    expect(importRes.status).toBe(200);
+    const result = await readJson<{ succeeded: number; failed: number; results: Array<{ status: string }> }>(
+      importRes
+    );
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.results.every((row) => row.status === "CREATED")).toBe(true);
+
+    const postedRes = await app.request(`/api/transactions?status=POSTED&sourceAccountId=${bank.id}`);
+    expect(postedRes.status).toBe(200);
+    const posted = await readJson<Array<{ status: string }>>(postedRes);
+    expect(posted).toHaveLength(2);
+    expect(posted.every((tx) => tx.status === "POSTED")).toBe(true);
+
+    const registerRes = await app.request(`/api/accounts/${bank.id}/register`);
+    expect(registerRes.status).toBe(200);
+    const register = await readJson<Array<unknown>>(registerRes);
+    expect(register).toHaveLength(2);
+  });
+
+  test("POST /api/transactions/import rejects an empty rows array", async () => {
+    const bankRes = await app.request("/api/accounts", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ code: "1040", name: "Empty Import Checking", category: "BANK" })
+    });
+    const bank = await readJson<{ id: string }>(bankRes);
+
+    const res = await app.request("/api/transactions/import", {
+      method: "POST",
+      headers: jsonHeaders(),
+      body: JSON.stringify({ mainAccountId: bank.id, rows: [] })
+    });
+
+    expect(res.status).toBe(400);
+  });
 });

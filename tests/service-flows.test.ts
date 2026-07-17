@@ -96,4 +96,75 @@ describe("service flows", () => {
     expect(await services.registerService.listRegisterEntries(bank.id)).toHaveLength(0);
     expect((await services.accountService.getAccountById(bank.id)).currentBalance).toBe(0);
   });
+
+  test("importTransactions creates and posts transactions immediately", async () => {
+    const { services } = await createTestServices();
+    const { bank, expense } = await seedBankAndExpense(services);
+
+    const result = await services.transactionService.importTransactions({
+      mainAccountId: bank.id,
+      rows: [
+        { clientRowId: "row-1", transactionDate: "2024-02-01", payee: "Coffee Shop", amount: -4.5, categoryAccountId: expense.id },
+        { clientRowId: "row-2", transactionDate: "2024-02-02", payee: "Employer Inc", amount: 2500, categoryAccountId: expense.id }
+      ]
+    });
+
+    expect(result.succeeded).toBe(2);
+    expect(result.failed).toBe(0);
+    expect(result.results.every((row) => row.status === "CREATED")).toBe(true);
+
+    const posted = await services.transactionService.listTransactions({ status: "POSTED", sourceAccountId: bank.id });
+    expect(posted).toHaveLength(2);
+    expect(posted.every((tx) => tx.status === "POSTED")).toBe(true);
+
+    // Posted imports must immediately appear in postings/register and update balances.
+    expect(await services.ledgerService.listPostings()).toHaveLength(4);
+    expect(await services.registerService.listRegisterEntries(bank.id)).toHaveLength(2);
+    expect((await services.accountService.getAccountById(bank.id)).currentBalance).toBe(2495.5);
+  });
+
+  test("importTransactions reports per-row failure without aborting the batch", async () => {
+    const { services } = await createTestServices();
+    const { bank, expense } = await seedBankAndExpense(services);
+    const closedExpense = await services.accountService.createAccount({
+      code: "5020",
+      name: "Closed Expense",
+      category: "EXPENSE"
+    });
+    await services.accountService.closeAccount(closedExpense.id);
+
+    const result = await services.transactionService.importTransactions({
+      mainAccountId: bank.id,
+      rows: [
+        { clientRowId: "row-ok", transactionDate: "2024-02-01", amount: -10, categoryAccountId: expense.id },
+        { clientRowId: "row-bad-account", transactionDate: "2024-02-01", amount: -20, categoryAccountId: closedExpense.id },
+        { clientRowId: "row-same-account", transactionDate: "2024-02-01", amount: -30, categoryAccountId: bank.id }
+      ]
+    });
+
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(2);
+    const byId = Object.fromEntries(result.results.map((row) => [row.clientRowId, row]));
+    expect(byId["row-ok"].status).toBe("CREATED");
+    expect(byId["row-bad-account"].status).toBe("FAILED");
+    expect(byId["row-same-account"].status).toBe("FAILED");
+
+    const posted = await services.transactionService.listTransactions({ status: "POSTED", sourceAccountId: bank.id });
+    expect(posted).toHaveLength(1);
+  });
+
+  test("voiding an imported transaction creates a reversal like any other posted transaction", async () => {
+    const { services } = await createTestServices();
+    const { bank, expense } = await seedBankAndExpense(services);
+
+    const result = await services.transactionService.importTransactions({
+      mainAccountId: bank.id,
+      rows: [{ clientRowId: "row-void", transactionDate: "2024-02-01", amount: -25, categoryAccountId: expense.id }]
+    });
+    const [imported] = result.results.map((row) => row.transactionId!);
+
+    const voided = await services.transactionService.voidTransaction(imported);
+    expect(voided.status).toBe("VOIDED");
+    expect((await services.accountService.getAccountById(bank.id)).currentBalance).toBe(0);
+  });
 });
