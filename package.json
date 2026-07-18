@@ -13,6 +13,8 @@
     "start": "bun src/index.ts",
     "test": "bun test",
     "seed": "bun scripts/seed-from-csv.ts",
+    "generate-transactions": "bun scripts/generate-transactions.ts",
+    "clean-transactions": "bun scripts/clean-transactions.ts",
     "openapi": "bun scripts/generate-openapi.ts",
     "bean-check": "bean-check ${LEDGER_FILE:-data/company.bean}"
   },
