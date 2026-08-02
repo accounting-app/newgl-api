@@ -349,6 +349,23 @@ function formatAmount(value: number): string {
   return value >= 0 ? fixed : fixed;
 }
 
+// parseBeancount is deliberately lenient (a hand-rolled line scanner, not a
+// strict grammar) so the rest of the app never crashes on odd formatting --
+// it NEVER throws. Any line it doesn't recognize just falls into `preamble`
+// or `epilogue` untouched. That means it can't be used on its own to satisfy
+// "parse and validate before persisting" (AI_INTEGRATION_PLAN.md Part 6):
+// upload a text file full of gibberish and parseBeancount happily returns an
+// empty-but-"valid" document. This is the extra check callers that accept
+// user-uploaded content (ledgers upload/restore) must run on top.
+export function isPlausibleBeancountDocument(raw: string, document: BeancountDocument): boolean {
+  if (!raw.trim()) return false;
+  // Every ledger this app has ever produced (defaultDocument, seed data,
+  // hand-written fixtures) declares its title up front. A file with real
+  // opens/transactions but no title is vanishingly unlikely to be a
+  // Beancount ledger at all, let alone one worth trusting as source of truth.
+  return document.preamble.some((line) => /option\s+"title"/.test(line));
+}
+
 // The blank starting point for a ledger that doesn't exist yet -- used both
 // by the repositories (first load of a company with no ledger row/file) and
 // by tenant bootstrap (a brand-new tenant's first ledger).

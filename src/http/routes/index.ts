@@ -6,3 +6,4 @@ export { healthRoutes } from "@/http/routes/health";
 export { debugRoutes } from "@/http/routes/debug";
 export { ledgerDownloadRoutes } from "@/http/routes/ledger-download";
 export { tenantRoutes } from "@/http/routes/tenants";
+export { ledgerRoutesV2 } from "@/http/routes/ledgers";
