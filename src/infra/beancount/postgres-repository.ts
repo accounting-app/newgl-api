@@ -4,10 +4,12 @@ import type { LedgerRepository } from "@/application/contracts";
 import type { LedgerStore } from "@/domain/models";
 import { documentToStore, storeToDocument } from "@/infra/beancount/mapper";
 import {
+  defaultDocument,
   parseBeancount,
   serializeBeancount,
   type BeancountDocument
 } from "@/infra/beancount/parser";
+import { sha256 } from "@/shared/utils/hash";
 
 class AsyncMutex {
   private locked = false;
@@ -33,29 +35,6 @@ class AsyncMutex {
     }
     this.locked = false;
   }
-}
-
-function defaultDocument(company: string): BeancountDocument {
-  return {
-    preamble: [
-      ";; -*- mode: beancount; -*-",
-      `option "title" "${company}"`,
-      'option "operating_currency" "USD"',
-      "",
-      "2024-01-01 commodity USD",
-      '  name: "US Dollar"'
-    ],
-    opens: [],
-    closes: [],
-    transactions: [],
-    epilogue: []
-  };
-}
-
-async function sha256(text: string): Promise<string> {
-  const hasher = new Bun.CryptoHasher("sha256");
-  hasher.update(text);
-  return hasher.digest("hex");
 }
 
 /**

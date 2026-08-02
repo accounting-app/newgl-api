@@ -5,6 +5,7 @@ import type { LedgerRepository } from "@/application/contracts";
 import type { LedgerStore } from "@/domain/models";
 import { documentToStore, storeToDocument } from "@/infra/beancount/mapper";
 import {
+  defaultDocument,
   parseBeancount,
   serializeBeancount,
   type BeancountDocument
@@ -34,23 +35,6 @@ class AsyncMutex {
     }
     this.locked = false;
   }
-}
-
-function defaultDocument(company: string): BeancountDocument {
-  return {
-    preamble: [
-      ";; -*- mode: beancount; -*-",
-      `option "title" "${company}"`,
-      'option "operating_currency" "USD"',
-      "",
-      "2024-01-01 commodity USD",
-      '  name: "US Dollar"'
-    ],
-    opens: [],
-    closes: [],
-    transactions: [],
-    epilogue: []
-  };
 }
 
 export class BeancountLedgerRepository implements LedgerRepository {

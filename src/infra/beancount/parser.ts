@@ -348,3 +348,23 @@ function formatAmount(value: number): string {
   const fixed = value.toFixed(2);
   return value >= 0 ? fixed : fixed;
 }
+
+// The blank starting point for a ledger that doesn't exist yet -- used both
+// by the repositories (first load of a company with no ledger row/file) and
+// by tenant bootstrap (a brand-new tenant's first ledger).
+export function defaultDocument(company: string): BeancountDocument {
+  return {
+    preamble: [
+      ";; -*- mode: beancount; -*-",
+      `option "title" "${company}"`,
+      'option "operating_currency" "USD"',
+      "",
+      "2024-01-01 commodity USD",
+      '  name: "US Dollar"'
+    ],
+    opens: [],
+    closes: [],
+    transactions: [],
+    epilogue: []
+  };
+}

@@ -1,7 +1,7 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import type { ServiceContainer } from "@/application/service-container";
+import { getServices } from "@/http/context";
 import {
   accountSchema,
   createAccountInputSchema,
@@ -90,34 +90,34 @@ const accountRegisterRoute = createRoute({
   }
 });
 
-export function accountRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function accountRoutes(app: OpenAPIHono): void {
   app.openapi(accountListRoute, async (context) => {
-    const accounts = await services.accountService.listAccounts();
+    const accounts = await getServices(context).accountService.listAccounts();
     return context.json(accounts, 200);
   });
 
   app.openapi(accountCreateRoute, async (context) => {
     const input = context.req.valid("json");
-    const account = await services.accountService.createAccount(input);
+    const account = await getServices(context).accountService.createAccount(input);
     return context.json(account, 201);
   });
 
   app.openapi(accountGetRoute, async (context) => {
     const { accountId } = context.req.valid("param");
-    const account = await services.accountService.getAccountById(accountId);
+    const account = await getServices(context).accountService.getAccountById(accountId);
     return context.json(account, 200);
   });
 
   app.openapi(accountUpdateRoute, async (context) => {
     const { accountId } = context.req.valid("param");
     const input = context.req.valid("json");
-    const account = await services.accountService.updateAccount(accountId, input);
+    const account = await getServices(context).accountService.updateAccount(accountId, input);
     return context.json(account, 200);
   });
 
   app.openapi(accountRegisterRoute, async (context) => {
     const { accountId } = context.req.valid("param");
-    const entries = await services.registerService.listRegisterEntries(accountId);
+    const entries = await getServices(context).registerService.listRegisterEntries(accountId);
     return context.json(entries, 200);
   });
 }

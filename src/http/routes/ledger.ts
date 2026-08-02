@@ -1,7 +1,7 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import type { ServiceContainer } from "@/application/service-container";
+import { getServices } from "@/http/context";
 import { errorResponseSchema, ledgerPostingSchema } from "@/domain/models";
 
 const ledgerPostingsRoute = createRoute({
@@ -33,15 +33,15 @@ const ledgerPostingsByTransactionRoute = createRoute({
   }
 });
 
-export function ledgerRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function ledgerRoutes(app: OpenAPIHono): void {
   app.openapi(ledgerPostingsRoute, async (context) => {
-    const postings = await services.ledgerService.listPostings();
+    const postings = await getServices(context).ledgerService.listPostings();
     return context.json(postings, 200);
   });
 
   app.openapi(ledgerPostingsByTransactionRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const postings = await services.ledgerService.getPostingsByTransactionId(transactionId);
+    const postings = await getServices(context).ledgerService.getPostingsByTransactionId(transactionId);
     return context.json(postings, 200);
   });
 }
