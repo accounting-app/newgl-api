@@ -130,12 +130,11 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       select content from ledgers where tenant_id = ${tenantId} and name = ${name} limit 1
     `;
     if (rows.length === 0) {
-      return context.json({ error: { message: `No ledger named '${name}'` } }, 404);
+      return context.json({ error: `No ledger named '${name}'` }, 404);
     }
 
     const { content } = rows[0] as { content: string };
-    return context.body(content, 200, {
-      "Content-Type": "text/plain; charset=utf-8",
+    return context.text(content, 200, {
       "Content-Disposition": `attachment; filename="${name}.bean"`
     });
   });
@@ -164,7 +163,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       accountCount = parsed.opens.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not parse the uploaded file";
-      return context.json({ error: { message: `Invalid Beancount file: ${message}` } }, 400);
+      return context.json({ error: `Invalid Beancount file: ${message}` }, 400);
     }
 
     const hash = await sha256(normalized);
@@ -173,7 +172,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       select id, version from ledgers where tenant_id = ${tenantId} and name = ${name} limit 1
     `;
     if (existing.length === 0) {
-      return context.json({ error: { message: `No ledger named '${name}'` } }, 404);
+      return context.json({ error: `No ledger named '${name}'` }, 404);
     }
     const ledger = existing[0] as { id: string; version: number };
     const nextVersion = ledger.version + 1;
@@ -206,7 +205,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       select id from ledgers where tenant_id = ${tenantId} and name = ${name} limit 1
     `;
     if (ledger.length === 0) {
-      return context.json({ error: { message: `No ledger named '${name}'` } }, 404);
+      return context.json({ error: `No ledger named '${name}'` }, 404);
     }
     const { id: ledgerId } = ledger[0] as { id: string };
 
@@ -218,7 +217,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
     `;
 
     return context.json(
-      rows.map((row) => {
+      rows.map((row: unknown) => {
         const typedRow = row as {
           version: number;
           content_hash: string;
@@ -251,7 +250,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       select id, version from ledgers where tenant_id = ${tenantId} and name = ${name} limit 1
     `;
     if (ledger.length === 0) {
-      return context.json({ error: { message: `No ledger named '${name}'` } }, 404);
+      return context.json({ error: `No ledger named '${name}'` }, 404);
     }
     const current = ledger[0] as { id: string; version: number };
 
@@ -259,7 +258,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       select content from ledger_versions where ledger_id = ${current.id} and version = ${version} limit 1
     `;
     if (target.length === 0) {
-      return context.json({ error: { message: `No version ${version} for ledger '${name}'` } }, 404);
+      return context.json({ error: `No version ${version} for ledger '${name}'` }, 404);
     }
     const { content } = target[0] as { content: string };
 
@@ -278,7 +277,7 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
       accountCount = parsed.opens.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not parse the stored version";
-      return context.json({ error: { message: `Stored version does not parse: ${message}` } }, 400);
+      return context.json({ error: `Stored version does not parse: ${message}` }, 400);
     }
 
     const hash = await sha256(normalized);
