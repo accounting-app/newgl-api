@@ -1,3 +1,5 @@
+import { createId } from "@/shared/utils/id";
+
 export type MetaValue = string | number | boolean;
 
 export type Metadata = Record<string, MetaValue>;
@@ -366,9 +368,13 @@ export function isPlausibleBeancountDocument(raw: string, document: BeancountDoc
   return document.preamble.some((line) => /option\s+"title"/.test(line));
 }
 
-// The blank starting point for a ledger that doesn't exist yet -- used both
-// by the repositories (first load of a company with no ledger row/file) and
-// by tenant bootstrap (a brand-new tenant's first ledger).
+// The blank starting point for a ledger that doesn't exist yet -- used by
+// the repositories (first load of a company with no ledger row/file). Not
+// used for tenant bootstrap -- see starterDocument below; an empty chart of
+// accounts makes both the register and AI categorization unusable on day
+// one (AI_INTEGRATION_PLAN.md Part 3: "an empty ledger is a poor first
+// experience, and AI categorization is useless with no accounts to
+// categorize into").
 export function defaultDocument(company: string): BeancountDocument {
   return {
     preamble: [
@@ -380,6 +386,47 @@ export function defaultDocument(company: string): BeancountDocument {
       '  name: "US Dollar"'
     ],
     opens: [],
+    closes: [],
+    transactions: [],
+    epilogue: []
+  };
+}
+
+// A brand-new tenant's first ledger: the same starter chart of accounts
+// every tenant gets, no transactions or balances -- those belong to
+// whichever business seeded `seedContent` (today, data/company.bean's demo
+// company) and must never leak into a new signup's books.
+//
+// Every open gets a freshly generated `id` here, at bootstrap time, rather
+// than leaving it for the parser to backfill on next read (mapper.ts's
+// openToAccount() does exactly that when `id` is missing) -- Part 6 parses
+// fresh from Postgres on every request with no cache, so a missing id would
+// mint a *different* random uuid on every single read, silently breaking
+// every reference to that account (transactions, payee_rules) the moment it
+// was created. Baking a stable id into the persisted text is what Part 6's
+// "the file is the source of truth" actually requires here.
+export function starterDocument(company: string, seedContent: string, bootstrapDate: string): BeancountDocument {
+  const seed = parseBeancount(seedContent);
+  const opens = seed.opens.map((open) => ({
+    ...open,
+    date: bootstrapDate,
+    metadata: {
+      ...open.metadata,
+      id: createId(),
+      "created-at": `${bootstrapDate}T00:00:00.000Z`
+    }
+  }));
+
+  return {
+    preamble: [
+      ";; -*- mode: beancount; -*-",
+      `option "title" "${company}"`,
+      'option "operating_currency" "USD"',
+      "",
+      `${bootstrapDate} commodity USD`,
+      '  name: "US Dollar"'
+    ],
+    opens,
     closes: [],
     transactions: [],
     epilogue: []

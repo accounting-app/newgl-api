@@ -109,6 +109,52 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.status).toBe(200);
   });
 
+  test("bootstrap seeds a real starter chart of accounts, with zero balances", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`seed-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}` };
+
+    const bootstrap = await app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders });
+    const bootstrapBody = (await bootstrap.json()) as { id: string };
+    createdTenantIds.push(bootstrapBody.id);
+
+    const res = await app.request("/api/accounts", { headers: authHeaders });
+    expect(res.status).toBe(200);
+    const accounts = (await res.json()) as Array<{ name: string; category: string; currentBalance: number }>;
+
+    // An empty chart of accounts leaves both the register and AI
+    // categorization unusable on day one (AI_INTEGRATION_PLAN.md Part 3) --
+    // this is the exact gap a real signup hit before this fix.
+    expect(accounts.length).toBeGreaterThan(0);
+    expect(accounts.some((account) => account.category === "BANK")).toBe(true);
+    expect(accounts.some((account) => account.category === "INCOME")).toBe(true);
+    expect(accounts.some((account) => account.category === "EXPENSE")).toBe(true);
+    // Seeded from data/company.bean's chart of accounts, never its demo
+    // balances or transactions -- those belong to that file's fictitious
+    // business, not to a new signup.
+    expect(accounts.every((account) => account.currentBalance === 0)).toBe(true);
+  });
+
+  test("seeded account ids are stable across repeated reads (no cache, parsed fresh every time)", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`seed-stable-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}` };
+
+    const bootstrap = await app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders });
+    const bootstrapBody = (await bootstrap.json()) as { id: string };
+    createdTenantIds.push(bootstrapBody.id);
+
+    const first = (await (await app.request("/api/accounts", { headers: authHeaders })).json()) as Array<{
+      id: string;
+    }>;
+    const second = (await (await app.request("/api/accounts", { headers: authHeaders })).json()) as Array<{
+      id: string;
+    }>;
+    expect(first.map((a) => a.id)).toEqual(second.map((a) => a.id));
+  });
+
   test("GET /api/tenants/me returns 403 before bootstrap and the tenant after", async () => {
     if (!reachable) return;
     const user = await createConfirmedUser(`me-${crypto.randomUUID()}@example.com`, "password123!");

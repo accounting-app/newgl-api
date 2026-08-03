@@ -1,12 +1,26 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import { LEDGER_NAME } from "@/configuration";
+import { LEDGER_FILE, LEDGER_NAME } from "@/configuration";
 import { errorResponseSchema } from "@/domain/models";
 import { getTenantId, getUserEmail, getUserId } from "@/http/context";
-import { defaultDocument, serializeBeancount } from "@/infra/beancount/parser";
+import { defaultDocument, serializeBeancount, starterDocument } from "@/infra/beancount/parser";
 import { getSql } from "@/infra/postgres/client";
 import { sha256 } from "@/shared/utils/hash";
+
+// AI_INTEGRATION_PLAN.md Part 3: "reuse whatever seeds data/company.bean
+// today" for every new tenant's starter chart of accounts -- an empty
+// ledger leaves both the register and AI categorization unusable on day
+// one. Falls back to a genuinely empty ledger (today's prior behavior)
+// only if the seed file is ever missing, rather than failing signup
+// outright over a starter-data problem.
+async function buildBootstrapDocument(tenantName: string, bootstrapDate: string) {
+  const seedFile = Bun.file(LEDGER_FILE);
+  if (await seedFile.exists()) {
+    return starterDocument(tenantName, await seedFile.text(), bootstrapDate);
+  }
+  return defaultDocument(tenantName);
+}
 
 const tenantSchema = zod.object({
   id: zod.string().uuid(),
@@ -86,7 +100,8 @@ export function tenantRoutes(app: OpenAPIHono): void {
 
     const email = getUserEmail(context);
     const tenantName = email ? `${email.split("@")[0]}'s Company` : "My Company";
-    const content = serializeBeancount(defaultDocument(tenantName));
+    const bootstrapDate = new Date().toISOString().slice(0, 10);
+    const content = serializeBeancount(await buildBootstrapDocument(tenantName, bootstrapDate));
     const hash = await sha256(content);
 
     const tenant = await sql.begin(async (tx) => {
