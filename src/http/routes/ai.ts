@@ -16,6 +16,23 @@ const columnMappingInputSchema = zod.object({
   sampleRows: zod.array(zod.array(zod.string())).min(1).max(3)
 });
 
+const normalizePayeesInputSchema = zod.object({
+  payees: zod.array(zod.string().min(1)).min(1).max(200)
+});
+
+const learnPayeeRulesInputSchema = zod.object({
+  rules: zod
+    .array(
+      zod.object({
+        payee: zod.string().min(1),
+        accountId: zod.string().min(1),
+        canonicalPayee: zod.string().min(1).optional()
+      })
+    )
+    .min(1)
+    .max(500)
+});
+
 type PlanLimits = { monthlyAiActions: number; monthlyTokenCap: number };
 
 async function getPlanLimits(tenantId: string): Promise<PlanLimits | null> {
@@ -189,5 +206,71 @@ export function aiRoutes(app: OpenAPIHono): void {
     // 200 success, 400 invalid input, 402 quota exceeded -- all opaque
     // passthrough of newgl-ai's own response.
     return context.json(body, response.status as 200 | 400 | 402);
+  });
+
+  // AI_INTEGRATION_PLAN.md Part 7, feature #2: payee normalization. Feeds
+  // the learned-rules cascade that's what makes Phase 6 (categorization)
+  // cheap -- most rows never reach Anthropic once a tenant's payees have
+  // been seen once.
+  app.post("/api/ai/payees/normalize", async (context) => {
+    const tenantId = getTenantId(context);
+    const rawBody = await context.req.json().catch(() => null);
+    const parsed = normalizePayeesInputSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return context.json(
+        { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
+        400
+      );
+    }
+
+    const limits = await getPlanLimits(tenantId);
+    const payload: Record<string, unknown> = { tenantId, ...parsed.data };
+    if (limits) {
+      payload.monthlyAiActions = limits.monthlyAiActions;
+      payload.monthlyTokenCap = limits.monthlyTokenCap;
+    }
+
+    let response: Response;
+    try {
+      response = await callNewglAi("/internal/ai/payees/normalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      return context.json({ error: { message: "Could not reach the AI service" } }, 503);
+    }
+
+    const body = await response.json();
+    return context.json(body, response.status as 200 | 400 | 402);
+  });
+
+  // Confirmed (payee -> accountId) pairs from a completed import -- Part 1b:
+  // "feeds the cascade". No prompt construction, no Anthropic call; this
+  // just forwards to newgl-ai's payee_rules writer.
+  app.post("/api/ai/rules/learn", async (context) => {
+    const tenantId = getTenantId(context);
+    const rawBody = await context.req.json().catch(() => null);
+    const parsed = learnPayeeRulesInputSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return context.json(
+        { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
+        400
+      );
+    }
+
+    let response: Response;
+    try {
+      response = await callNewglAi("/internal/ai/rules/learn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId, ...parsed.data })
+      });
+    } catch {
+      return context.json({ error: { message: "Could not reach the AI service" } }, 503);
+    }
+
+    const body = await response.json();
+    return context.json(body, response.status as 200 | 400);
   });
 }
