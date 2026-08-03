@@ -64,6 +64,16 @@ async function getPlanLimits(tenantId: string): Promise<PlanLimits | null> {
   return row ? { monthlyAiActions: row.monthly_ai_actions, monthlyTokenCap: row.monthly_token_cap } : null;
 }
 
+// Server-side enforcement of the Settings > AI off switch (F6): a stale or
+// tampered client must not be able to trigger a billable AI action just
+// because it skipped rendering the disabled state.
+async function isAiEnabled(tenantId: string): Promise<boolean> {
+  const sql = getSql();
+  const rows = await sql`select ai_enabled from tenants where id = ${tenantId} limit 1`;
+  const row = rows[0] as { ai_enabled: boolean } | undefined;
+  return row?.ai_enabled ?? true;
+}
+
 // Read directly from process.env (rather than the frozen consts in
 // @/configuration) so integration tests can point this at a freshly-spawned
 // newgl-ai instance on a random port without needing to reload modules.
@@ -200,6 +210,10 @@ export function aiRoutes(app: OpenAPIHono): void {
       );
     }
 
+    if (!(await isAiEnabled(tenantId))) {
+      return context.json({ error: { message: "AI features are turned off for this account" } }, 403);
+    }
+
     const limits = await getPlanLimits(tenantId);
     const payload: Record<string, unknown> = { tenantId, ...parsed.data };
     if (limits) {
@@ -237,6 +251,10 @@ export function aiRoutes(app: OpenAPIHono): void {
         { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
         400
       );
+    }
+
+    if (!(await isAiEnabled(tenantId))) {
+      return context.json({ error: { message: "AI features are turned off for this account" } }, 403);
     }
 
     const limits = await getPlanLimits(tenantId);
@@ -303,6 +321,10 @@ export function aiRoutes(app: OpenAPIHono): void {
         { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
         400
       );
+    }
+
+    if (!(await isAiEnabled(tenantId))) {
+      return context.json({ error: { message: "AI features are turned off for this account" } }, 403);
     }
 
     // "load the chart of accounts" (Part 1b) -- newgl-ai never touches the
