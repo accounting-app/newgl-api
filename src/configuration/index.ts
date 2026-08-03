@@ -7,6 +7,8 @@ export type AppConfig = {
   LEDGER_NAME: string;
   DATABASE_URL: string | undefined;
   SUPABASE_URL: string | undefined;
+  NEWGL_AI_URL: string | undefined;
+  INTERNAL_SERVICE_TOKEN: string | undefined;
   ACCOUNTING_BASIS: AccountingBasis;
   ACCOUNTING_CONFIG: {
     basis: AccountingBasis;
@@ -24,6 +26,11 @@ export const LEDGER_FILE = process.env.LEDGER_FILE || "data/company.bean";
 export const LEDGER_NAME = process.env.LEDGER_NAME || "company";
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const SUPABASE_URL = process.env.SUPABASE_URL;
+// newgl-ai (Phase 3+): internal-only service, reachable at NEWGL_AI_URL,
+// authenticated with the shared INTERNAL_SERVICE_TOKEN header. Never exposed
+// to the browser -- see AI_INTEGRATION_PLAN.md Part 1.
+export const NEWGL_AI_URL = process.env.NEWGL_AI_URL;
+export const INTERNAL_SERVICE_TOKEN = process.env.INTERNAL_SERVICE_TOKEN;
 export const DEBUG_LEDGER_PASSWORD = process.env.DEBUG_LEDGER_PASSWORD ?? "";
 
 // NOTE: Need to swap the accounting config, from UI -> API.
@@ -43,6 +50,8 @@ const APP_ENV_CONFIG: Record<AppEnv, AppConfig> = {
     LEDGER_NAME,
     DATABASE_URL,
     SUPABASE_URL,
+    NEWGL_AI_URL,
+    INTERNAL_SERVICE_TOKEN,
     ACCOUNTING_BASIS,
     ACCOUNTING_CONFIG
    },
@@ -52,6 +61,8 @@ const APP_ENV_CONFIG: Record<AppEnv, AppConfig> = {
     LEDGER_NAME,
     DATABASE_URL,
     SUPABASE_URL,
+    NEWGL_AI_URL,
+    INTERNAL_SERVICE_TOKEN,
     ACCOUNTING_BASIS,
     ACCOUNTING_CONFIG
    },
@@ -61,6 +72,8 @@ const APP_ENV_CONFIG: Record<AppEnv, AppConfig> = {
     LEDGER_NAME,
     DATABASE_URL,
     SUPABASE_URL,
+    NEWGL_AI_URL,
+    INTERNAL_SERVICE_TOKEN,
     ACCOUNTING_BASIS,
     ACCOUNTING_CONFIG
    },
@@ -70,6 +83,8 @@ const APP_ENV_CONFIG: Record<AppEnv, AppConfig> = {
     LEDGER_NAME,
     DATABASE_URL,
     SUPABASE_URL,
+    NEWGL_AI_URL,
+    INTERNAL_SERVICE_TOKEN,
     ACCOUNTING_BASIS,
     ACCOUNTING_CONFIG
    }
