@@ -1,5 +1,3 @@
-import { createId } from "@/shared/utils/id";
-
 export type MetaValue = string | number | boolean;
 
 export type Metadata = Record<string, MetaValue>;
@@ -392,43 +390,20 @@ export function defaultDocument(company: string): BeancountDocument {
   };
 }
 
-// A brand-new tenant's first ledger: the same starter chart of accounts
-// every tenant gets, no transactions or balances -- those belong to
-// whichever business seeded `seedContent` (today, data/company.bean's demo
-// company) and must never leak into a new signup's books.
-//
-// Every open gets a freshly generated `id` here, at bootstrap time, rather
-// than leaving it for the parser to backfill on next read (mapper.ts's
-// openToAccount() does exactly that when `id` is missing) -- Part 6 parses
-// fresh from Postgres on every request with no cache, so a missing id would
-// mint a *different* random uuid on every single read, silently breaking
-// every reference to that account (transactions, payee_rules) the moment it
-// was created. Baking a stable id into the persisted text is what Part 6's
-// "the file is the source of truth" actually requires here.
-export function starterDocument(company: string, seedContent: string, bootstrapDate: string): BeancountDocument {
+// A brand-new tenant's first ledger: every tenant gets the exact same
+// starter data, chart of accounts *and* sample transactions, copied
+// verbatim from `seedContent` (today, data/company.bean) -- this is a demo
+// dataset every new signup starts from, not a blank chart of accounts, so
+// there's something to look at and categorize against on day one
+// (AI_INTEGRATION_PLAN.md Part 3). Every tenant's ledger content is its own
+// row in Postgres from this point on, so reusing the same ids/dates across
+// tenants is fine -- there is no global uniqueness requirement, only
+// per-tenant stability, and copying the file's own ids verbatim gives that
+// for free.
+export function starterDocument(company: string, seedContent: string): BeancountDocument {
   const seed = parseBeancount(seedContent);
-  const opens = seed.opens.map((open) => ({
-    ...open,
-    date: bootstrapDate,
-    metadata: {
-      ...open.metadata,
-      id: createId(),
-      "created-at": `${bootstrapDate}T00:00:00.000Z`
-    }
-  }));
-
   return {
-    preamble: [
-      ";; -*- mode: beancount; -*-",
-      `option "title" "${company}"`,
-      'option "operating_currency" "USD"',
-      "",
-      `${bootstrapDate} commodity USD`,
-      '  name: "US Dollar"'
-    ],
-    opens,
-    closes: [],
-    transactions: [],
-    epilogue: []
+    ...seed,
+    preamble: seed.preamble.map((line) => (/option\s+"title"/.test(line) ? `option "title" "${company}"` : line))
   };
 }

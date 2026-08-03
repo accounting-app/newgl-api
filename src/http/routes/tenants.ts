@@ -9,15 +9,17 @@ import { getSql } from "@/infra/postgres/client";
 import { sha256 } from "@/shared/utils/hash";
 
 // AI_INTEGRATION_PLAN.md Part 3: "reuse whatever seeds data/company.bean
-// today" for every new tenant's starter chart of accounts -- an empty
-// ledger leaves both the register and AI categorization unusable on day
-// one. Falls back to a genuinely empty ledger (today's prior behavior)
-// only if the seed file is ever missing, rather than failing signup
-// outright over a starter-data problem.
-async function buildBootstrapDocument(tenantName: string, bootstrapDate: string) {
+// today" for every new tenant's starter ledger -- an empty ledger leaves
+// both the register and AI categorization unusable on day one. Every new
+// tenant gets the same sample chart of accounts *and* sample transactions,
+// not just an empty chart of accounts -- there needs to be something to
+// look at. Falls back to a genuinely empty ledger (prior behavior) only if
+// the seed file is ever missing, rather than failing signup outright over a
+// starter-data problem.
+async function buildBootstrapDocument(tenantName: string) {
   const seedFile = Bun.file(LEDGER_FILE);
   if (await seedFile.exists()) {
-    return starterDocument(tenantName, await seedFile.text(), bootstrapDate);
+    return starterDocument(tenantName, await seedFile.text());
   }
   return defaultDocument(tenantName);
 }
@@ -100,8 +102,7 @@ export function tenantRoutes(app: OpenAPIHono): void {
 
     const email = getUserEmail(context);
     const tenantName = email ? `${email.split("@")[0]}'s Company` : "My Company";
-    const bootstrapDate = new Date().toISOString().slice(0, 10);
-    const content = serializeBeancount(await buildBootstrapDocument(tenantName, bootstrapDate));
+    const content = serializeBeancount(await buildBootstrapDocument(tenantName));
     const hash = await sha256(content);
 
     const tenant = await sql.begin(async (tx) => {

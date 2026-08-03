@@ -109,7 +109,7 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.status).toBe(200);
   });
 
-  test("bootstrap seeds a real starter chart of accounts, with zero balances", async () => {
+  test("bootstrap seeds a real starter chart of accounts and sample transactions", async () => {
     if (!reachable) return;
     const user = await createConfirmedUser(`seed-${crypto.randomUUID()}@example.com`, "password123!");
     createdUserIds.push(user.id);
@@ -130,10 +130,17 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.some((account) => account.category === "BANK")).toBe(true);
     expect(accounts.some((account) => account.category === "INCOME")).toBe(true);
     expect(accounts.some((account) => account.category === "EXPENSE")).toBe(true);
-    // Seeded from data/company.bean's chart of accounts, never its demo
-    // balances or transactions -- those belong to that file's fictitious
-    // business, not to a new signup.
-    expect(accounts.every((account) => account.currentBalance === 0)).toBe(true);
+
+    // Every new tenant starts from the same sample data/company.bean
+    // dataset -- chart of accounts *and* its two sample deposits -- copied
+    // verbatim, so there's something to look at on day one, not a blank
+    // ledger.
+    const cash = accounts.find((account) => account.name === "Cash");
+    expect(cash?.currentBalance).toBe(26000);
+
+    const transactionsRes = await app.request("/api/transactions", { headers: authHeaders });
+    const transactions = (await transactionsRes.json()) as Array<{ payee?: string | null }>;
+    expect(transactions.length).toBeGreaterThan(0);
   });
 
   test("seeded account ids are stable across repeated reads (no cache, parsed fresh every time)", async () => {
