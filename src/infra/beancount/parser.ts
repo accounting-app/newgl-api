@@ -348,3 +348,62 @@ function formatAmount(value: number): string {
   const fixed = value.toFixed(2);
   return value >= 0 ? fixed : fixed;
 }
+
+// parseBeancount is deliberately lenient (a hand-rolled line scanner, not a
+// strict grammar) so the rest of the app never crashes on odd formatting --
+// it NEVER throws. Any line it doesn't recognize just falls into `preamble`
+// or `epilogue` untouched. That means it can't be used on its own to satisfy
+// "parse and validate before persisting" (AI_INTEGRATION_PLAN.md Part 6):
+// upload a text file full of gibberish and parseBeancount happily returns an
+// empty-but-"valid" document. This is the extra check callers that accept
+// user-uploaded content (ledgers upload/restore) must run on top.
+export function isPlausibleBeancountDocument(raw: string, document: BeancountDocument): boolean {
+  if (!raw.trim()) return false;
+  // Every ledger this app has ever produced (defaultDocument, seed data,
+  // hand-written fixtures) declares its title up front. A file with real
+  // opens/transactions but no title is vanishingly unlikely to be a
+  // Beancount ledger at all, let alone one worth trusting as source of truth.
+  return document.preamble.some((line) => /option\s+"title"/.test(line));
+}
+
+// The blank starting point for a ledger that doesn't exist yet -- used by
+// the repositories (first load of a company with no ledger row/file). Not
+// used for tenant bootstrap -- see starterDocument below; an empty chart of
+// accounts makes both the register and AI categorization unusable on day
+// one (AI_INTEGRATION_PLAN.md Part 3: "an empty ledger is a poor first
+// experience, and AI categorization is useless with no accounts to
+// categorize into").
+export function defaultDocument(company: string): BeancountDocument {
+  return {
+    preamble: [
+      ";; -*- mode: beancount; -*-",
+      `option "title" "${company}"`,
+      'option "operating_currency" "USD"',
+      "",
+      "2024-01-01 commodity USD",
+      '  name: "US Dollar"'
+    ],
+    opens: [],
+    closes: [],
+    transactions: [],
+    epilogue: []
+  };
+}
+
+// A brand-new tenant's first ledger: every tenant gets the exact same
+// starter data, chart of accounts *and* sample transactions, copied
+// verbatim from `seedContent` (today, data/company.bean) -- this is a demo
+// dataset every new signup starts from, not a blank chart of accounts, so
+// there's something to look at and categorize against on day one
+// (AI_INTEGRATION_PLAN.md Part 3). Every tenant's ledger content is its own
+// row in Postgres from this point on, so reusing the same ids/dates across
+// tenants is fine -- there is no global uniqueness requirement, only
+// per-tenant stability, and copying the file's own ids verbatim gives that
+// for free.
+export function starterDocument(company: string, seedContent: string): BeancountDocument {
+  const seed = parseBeancount(seedContent);
+  return {
+    ...seed,
+    preamble: seed.preamble.map((line) => (/option\s+"title"/.test(line) ? `option "title" "${company}"` : line))
+  };
+}

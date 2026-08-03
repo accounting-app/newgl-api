@@ -1,7 +1,7 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import type { ServiceContainer } from "@/application/service-container";
+import { getServices } from "@/http/context";
 import {
   createTransactionInputSchema,
   errorResponseSchema,
@@ -189,10 +189,10 @@ const transactionDetailRoute = createRoute({
   }
 });
 
-export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer): void {
+export function transactionRoutes(app: OpenAPIHono): void {
   app.openapi(transactionListRoute, async (context) => {
     const { status, sourceAccountId } = context.req.valid("query");
-    const transactions = await services.transactionService.listTransactions(
+    const transactions = await getServices(context).transactionService.listTransactions(
       status || sourceAccountId ? { status, sourceAccountId } : undefined
     );
     return context.json(transactions, 200);
@@ -200,54 +200,55 @@ export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer):
 
   app.openapi(transactionImportRoute, async (context) => {
     const input = context.req.valid("json");
-    const result = await services.transactionService.importTransactions(input);
+    const result = await getServices(context).transactionService.importTransactions(input);
     return context.json(result, 200);
   });
 
   app.openapi(transactionCreateRoute, async (context) => {
     const input = context.req.valid("json");
-    const transaction = await services.transactionService.createTransaction(input);
+    const transaction = await getServices(context).transactionService.createTransaction(input);
     return context.json(transaction, 201);
   });
 
   app.openapi(transactionGetRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const transaction = await services.transactionService.getTransactionById(transactionId);
+    const transaction = await getServices(context).transactionService.getTransactionById(transactionId);
     return context.json(transaction, 200);
   });
 
   app.openapi(transactionPostRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const transaction = await services.transactionService.postTransaction(transactionId);
+    const transaction = await getServices(context).transactionService.postTransaction(transactionId);
     return context.json(transaction, 200);
   });
 
   app.openapi(transactionVoidRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const transaction = await services.transactionService.voidTransaction(transactionId);
+    const transaction = await getServices(context).transactionService.voidTransaction(transactionId);
     return context.json(transaction, 200);
   });
 
   app.openapi(transactionReverseRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const transaction = await services.transactionService.reverseTransaction(transactionId);
+    const transaction = await getServices(context).transactionService.reverseTransaction(transactionId);
     return context.json(transaction, 200);
   });
 
   app.openapi(transferRoute, async (context) => {
     const input = context.req.valid("json");
-    const transaction = await services.transactionService.createTransfer(input);
+    const transaction = await getServices(context).transactionService.createTransfer(input);
     return context.json(transaction, 201);
   });
 
   app.openapi(depositRoute, async (context) => {
     const input = context.req.valid("json");
-    const transaction = await services.transactionService.createDeposit(input);
+    const transaction = await getServices(context).transactionService.createDeposit(input);
     return context.json(transaction, 201);
   });
 
   app.openapi(expenseRoute, async (context) => {
     const input = context.req.valid("json");
+    const services = getServices(context);
     const transaction = await services.transactionService.createTransaction({
       ...input,
       type: "EXPENSE"
@@ -259,26 +260,26 @@ export function transactionRoutes(app: OpenAPIHono, services: ServiceContainer):
   app.openapi(registerUpdateRoute, async (context) => {
     const { entryId } = context.req.valid("param");
     const input = context.req.valid("json");
-    const entry = await services.registerService.updateRegisterEntry(entryId, input);
+    const entry = await getServices(context).registerService.updateRegisterEntry(entryId, input);
     return context.json(entry, 200);
   });
 
   app.openapi(registerReconcileRoute, async (context) => {
     const { entryId } = context.req.valid("param");
     const { status } = context.req.valid("json");
-    const entry = await services.registerService.setReconcileStatus(entryId, status);
+    const entry = await getServices(context).registerService.setReconcileStatus(entryId, status);
     return context.json(entry, 200);
   });
 
   app.openapi(registerDeleteRoute, async (context) => {
     const { entryId } = context.req.valid("param");
-    const entry = await services.registerService.deleteRegisterEntry(entryId);
+    const entry = await getServices(context).registerService.deleteRegisterEntry(entryId);
     return context.json(entry, 200);
   });
 
   app.openapi(transactionDetailRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
-    const detail = await services.registerService.getTransactionDetail(transactionId);
+    const detail = await getServices(context).registerService.getTransactionDetail(transactionId);
     return context.json(detail, 200);
   });
 }

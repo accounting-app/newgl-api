@@ -3,3 +3,7 @@ node_modules/
 data/*.bean.tmp
 *.log
 .DS_Store
+
+# Supabase local runtime state (config.toml IS committed)
+supabase/.branches
+supabase/.temp
