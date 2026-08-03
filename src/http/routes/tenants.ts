@@ -2,7 +2,8 @@ import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import { LEDGER_NAME } from "@/configuration";
-import { getUserEmail, getUserId } from "@/http/context";
+import { errorResponseSchema } from "@/domain/models";
+import { getTenantId, getUserEmail, getUserId } from "@/http/context";
 import { defaultDocument, serializeBeancount } from "@/infra/beancount/parser";
 import { getSql } from "@/infra/postgres/client";
 import { sha256 } from "@/shared/utils/hash";
@@ -20,6 +21,21 @@ const bootstrapRoute = createRoute({
     200: {
       content: { "application/json": { schema: tenantSchema } },
       description: "The current user's tenant (created on first call, returned unchanged after)"
+    }
+  }
+});
+
+const meRoute = createRoute({
+  method: "get",
+  path: "/api/tenants/me",
+  responses: {
+    200: {
+      content: { "application/json": { schema: tenantSchema } },
+      description: "The current user's tenant"
+    },
+    404: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "No tenant for this session -- should not happen after bootstrap has run"
     }
   }
 });
@@ -81,5 +97,23 @@ export function tenantRoutes(app: OpenAPIHono): void {
     });
 
     return context.json({ id: tenant.id, name: tenant.name, planId: tenant.plan_id }, 200);
+  });
+
+  // Unlike bootstrap, this goes through the normal tenantContext middleware
+  // (not AUTH_ONLY_PATHS) -- by the time this handler runs, tenantId is
+  // already resolved from an existing membership, so this is a plain lookup,
+  // not a repeat of bootstrap's create-if-missing logic.
+  app.openapi(meRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const sql = getSql();
+
+    const rows = await sql`
+      select id, name, plan_id from tenants where id = ${tenantId} limit 1
+    `;
+    if (rows.length === 0) {
+      return context.json({ error: "No tenant found for this session" }, 404);
+    }
+    const row = rows[0] as { id: string; name: string; plan_id: string };
+    return context.json({ id: row.id, name: row.name, planId: row.plan_id }, 200);
   });
 }

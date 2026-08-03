@@ -109,6 +109,26 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.status).toBe(200);
   });
 
+  test("GET /api/tenants/me returns 403 before bootstrap and the tenant after", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`me-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}` };
+
+    const before = await app.request("/api/tenants/me", { headers: authHeaders });
+    expect(before.status).toBe(403);
+
+    const bootstrap = await app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders });
+    const bootstrapBody = (await bootstrap.json()) as { id: string };
+    createdTenantIds.push(bootstrapBody.id);
+
+    const after = await app.request("/api/tenants/me", { headers: authHeaders });
+    expect(after.status).toBe(200);
+    const afterBody = (await after.json()) as { id: string; planId: string };
+    expect(afterBody.id).toBe(bootstrapBody.id);
+    expect(afterBody.planId).toBe("free");
+  });
+
   test("two tenants never see each other's ledger data", async () => {
     if (!reachable) return;
     const userA = await createConfirmedUser(`tenant-a-${crypto.randomUUID()}@example.com`, "password123!");
