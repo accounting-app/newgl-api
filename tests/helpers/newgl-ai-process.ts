@@ -8,9 +8,9 @@ import type { Subprocess } from "bun";
  * cross-repo import isn't viable, and spawning a real process is also a
  * closer match to production anyway.
  *
- * AI_FAKE_KEY_VALIDATION=true swaps in a deterministic fake Anthropic
- * validator (see newgl-ai/src/testing/fake-key-validator.ts) so these tests
- * never make a real network call or need a real Anthropic account.
+ * AI_TEST_MODE=true swaps in deterministic fake Anthropic key validation and
+ * responses (see newgl-ai/src/testing/) so these tests never make a real
+ * network call or need a real Anthropic account.
  */
 export type NewglAiTestServer = {
   baseUrl: string;
@@ -40,7 +40,7 @@ export async function startNewglAiForTests(): Promise<NewglAiTestServer | null> 
         AI_KEY_ENCRYPTION_KEY: "Eo0pUoxiqHb5h1QlSUcD07lVfiqi3kOcovq2CaSmLew=",
         ANTHROPIC_API_KEY: "sk-ant-test-valid-platform-key",
         ANTHROPIC_MODEL: "claude-opus-4-8",
-        AI_FAKE_KEY_VALIDATION: "true"
+        AI_TEST_MODE: "true"
       },
       stdout: "ignore",
       stderr: "ignore"

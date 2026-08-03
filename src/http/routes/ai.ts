@@ -9,6 +9,28 @@ const setKeyInputSchema = zod.object({
   modelOverride: zod.string().min(1).optional()
 });
 
+const columnMappingInputSchema = zod.object({
+  csvHeader: zod.array(zod.string()).min(1).max(100),
+  // "header + 3 sample rows" per AI_INTEGRATION_PLAN.md Part 1b -- capped
+  // here too so a caller can't blow up the request forwarded to newgl-ai.
+  sampleRows: zod.array(zod.array(zod.string())).min(1).max(3)
+});
+
+type PlanLimits = { monthlyAiActions: number; monthlyTokenCap: number };
+
+async function getPlanLimits(tenantId: string): Promise<PlanLimits | null> {
+  const sql = getSql();
+  const rows = await sql`
+    select p.monthly_ai_actions, p.monthly_token_cap
+    from tenants t
+    join plans p on p.id = t.plan_id
+    where t.id = ${tenantId}
+    limit 1
+  `;
+  const row = rows[0] as { monthly_ai_actions: number; monthly_token_cap: number } | undefined;
+  return row ? { monthlyAiActions: row.monthly_ai_actions, monthlyTokenCap: row.monthly_token_cap } : null;
+}
+
 // Read directly from process.env (rather than the frozen consts in
 // @/configuration) so integration tests can point this at a freshly-spawned
 // newgl-ai instance on a random port without needing to reload modules.
@@ -108,23 +130,15 @@ export function aiRoutes(app: OpenAPIHono): void {
 
   app.get("/api/ai/usage", async (context) => {
     const tenantId = getTenantId(context);
-    const sql = getSql();
 
     // Plan limits live in newgl-api's own tables (Part 1b: "newgl-ai
     // enforces the quota but does not know what a plan is").
-    const rows = await sql`
-      select p.monthly_ai_actions, p.monthly_token_cap
-      from tenants t
-      join plans p on p.id = t.plan_id
-      where t.id = ${tenantId}
-      limit 1
-    `;
-    const limits = rows[0] as { monthly_ai_actions: number; monthly_token_cap: number } | undefined;
+    const limits = await getPlanLimits(tenantId);
 
     const query = new URLSearchParams({ tenantId });
     if (limits) {
-      query.set("monthlyAiActions", String(limits.monthly_ai_actions));
-      query.set("monthlyTokenCap", String(limits.monthly_token_cap));
+      query.set("monthlyAiActions", String(limits.monthlyAiActions));
+      query.set("monthlyTokenCap", String(limits.monthlyTokenCap));
     }
 
     let response: Response;
@@ -136,5 +150,44 @@ export function aiRoutes(app: OpenAPIHono): void {
 
     const body = await response.json();
     return context.json(body, 200);
+  });
+
+  // AI_INTEGRATION_PLAN.md Part 7, feature #1: the first real AI feature.
+  // Proves key resolution, metering, quota, and 402 handling end-to-end on
+  // a low-risk feature -- being wrong here costs one dropdown click, not a
+  // bad accounting entry.
+  app.post("/api/ai/column-mapping", async (context) => {
+    const tenantId = getTenantId(context);
+    const rawBody = await context.req.json().catch(() => null);
+    const parsed = columnMappingInputSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return context.json(
+        { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
+        400
+      );
+    }
+
+    const limits = await getPlanLimits(tenantId);
+    const payload: Record<string, unknown> = { tenantId, ...parsed.data };
+    if (limits) {
+      payload.monthlyAiActions = limits.monthlyAiActions;
+      payload.monthlyTokenCap = limits.monthlyTokenCap;
+    }
+
+    let response: Response;
+    try {
+      response = await callNewglAi("/internal/ai/column-mapping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      return context.json({ error: { message: "Could not reach the AI service" } }, 503);
+    }
+
+    const body = await response.json();
+    // 200 success, 400 invalid input, 402 quota exceeded -- all opaque
+    // passthrough of newgl-ai's own response.
+    return context.json(body, response.status as 200 | 400 | 402);
   });
 }
