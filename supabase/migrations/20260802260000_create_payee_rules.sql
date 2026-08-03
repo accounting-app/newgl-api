@@ -18,9 +18,10 @@ create table payee_rules (
   tenant_id         uuid not null references tenants (id) on delete cascade,
   normalized_payee  text not null,
   canonical_payee   text not null,
-  -- References an account in the tenant's ledger (a Beancount account name,
-  -- e.g. "Expenses:Food:Coffee"), not a newgl-api table row -- accounts live
-  -- in the .bean content, not in Postgres. Filled in by Phase 6 confirmations.
+  -- The account's stable id (see mapper.ts: every account's id round-trips
+  -- through the .bean file's metadata), not a foreign key -- accounts live
+  -- in ledger content newgl-ai never reads directly. Filled in once a
+  -- categorization suggestion (Phase 6) is confirmed.
   account_id        text,
   source            text not null check (source in ('ai', 'user')),
   confirmed_count   integer not null default 0,

@@ -1,7 +1,7 @@
 import { z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import { getTenantId } from "@/http/context";
+import { getServices, getTenantId } from "@/http/context";
 import { getSql } from "@/infra/postgres/client";
 
 const setKeyInputSchema = zod.object({
@@ -31,6 +31,22 @@ const learnPayeeRulesInputSchema = zod.object({
     )
     .min(1)
     .max(500)
+});
+
+const categorizeInputSchema = zod.object({
+  // Unlike every other AI route, the caller does not supply the account
+  // catalog -- Part 1b: "newgl-api's job is: ... load the chart of accounts
+  // ... call newgl-ai". This route loads it itself from the ledger below.
+  transactions: zod
+    .array(
+      zod.object({
+        payee: zod.string().min(1),
+        memo: zod.string().optional(),
+        amount: zod.number()
+      })
+    )
+    .min(1)
+    .max(200)
 });
 
 type PlanLimits = { monthlyAiActions: number; monthlyTokenCap: number };
@@ -272,5 +288,48 @@ export function aiRoutes(app: OpenAPIHono): void {
 
     const body = await response.json();
     return context.json(body, response.status as 200 | 400);
+  });
+
+  // AI_INTEGRATION_PLAN.md Part 7, feature #3: categorization -- the
+  // highest-value feature. Suggests the counterparty account for each
+  // transaction; the AI suggests, a human confirms in the wizard, this
+  // never posts anything on its own.
+  app.post("/api/ai/categorize", async (context) => {
+    const tenantId = getTenantId(context);
+    const rawBody = await context.req.json().catch(() => null);
+    const parsed = categorizeInputSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      return context.json(
+        { error: { message: parsed.error.issues.map((issue) => issue.message).join("; ") } },
+        400
+      );
+    }
+
+    // "load the chart of accounts" (Part 1b) -- newgl-ai never touches the
+    // ledger directly, so this is the one place that account data crosses
+    // the service boundary, and only the fields the prompt needs.
+    const accounts = await getServices(context).accountService.listAccounts();
+    const compressedAccounts = accounts.map((account) => ({ id: account.id, name: account.name, category: account.category }));
+
+    const limits = await getPlanLimits(tenantId);
+    const payload: Record<string, unknown> = { tenantId, accounts: compressedAccounts, transactions: parsed.data.transactions };
+    if (limits) {
+      payload.monthlyAiActions = limits.monthlyAiActions;
+      payload.monthlyTokenCap = limits.monthlyTokenCap;
+    }
+
+    let response: Response;
+    try {
+      response = await callNewglAi("/internal/ai/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      return context.json({ error: { message: "Could not reach the AI service" } }, 503);
+    }
+
+    const body = await response.json();
+    return context.json(body, response.status as 200 | 400 | 402);
   });
 }
