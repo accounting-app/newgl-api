@@ -16,7 +16,8 @@ import {
   ledgerDownloadRoutes,
   tenantRoutes,
   ledgerRoutesV2,
-  aiRoutes
+  aiRoutes,
+  companyRoutes
 } from "@/http/routes";
 
 // `defaultServices` is a test-mode escape hatch: existing tests and scripts
@@ -53,5 +54,6 @@ export function createApp(defaultServices?: ServiceContainer) {
   ledgerDownloadRoutes(app);
   ledgerRoutesV2(app);
   aiRoutes(app);
+  companyRoutes(app);
   return app;
 }

@@ -61,6 +61,7 @@ export function tenantContext(defaultServices?: ServiceContainer): MiddlewareHan
     if (defaultServices) {
       context.set("userId", "test-user");
       context.set("tenantId", "test-tenant");
+      context.set("ledgerName", LEDGER_NAME);
       context.set("services", defaultServices);
       await next();
       return;
@@ -96,8 +97,23 @@ export function tenantContext(defaultServices?: ServiceContainer): MiddlewareHan
     }
 
     const sql = getSql();
+    // Phase A (multi-company): resolve which ledger this request is scoped
+    // to. m.active_ledger_name is the caller's explicit choice (set via
+    // POST /api/companies/:name/switch); when they've never switched, fall
+    // back to the tenant's primary ledger. LEDGER_NAME (the old
+    // single-company env constant) is the last-resort default, kept only
+    // for tenants created before this migration that might somehow have
+    // no ledger flagged is_primary.
     const rows = await sql`
-      select m.tenant_id, t.name as tenant_name
+      select
+        m.tenant_id,
+        t.name as tenant_name,
+        m.active_ledger_name,
+        (
+          select l.name from ledgers l
+          where l.tenant_id = m.tenant_id and l.is_primary = true
+          limit 1
+        ) as primary_ledger_name
       from memberships m
       join tenants t on t.id = m.tenant_id
       where m.user_id = ${userId}
@@ -110,11 +126,18 @@ export function tenantContext(defaultServices?: ServiceContainer): MiddlewareHan
       );
     }
 
-    const row = rows[0] as { tenant_id: string; tenant_name: string };
-    const repository = createPostgresLedgerRepository(sql, LEDGER_NAME, row.tenant_name, row.tenant_id);
+    const row = rows[0] as {
+      tenant_id: string;
+      tenant_name: string;
+      active_ledger_name: string | null;
+      primary_ledger_name: string | null;
+    };
+    const ledgerName = row.active_ledger_name ?? row.primary_ledger_name ?? LEDGER_NAME;
+    const repository = createPostgresLedgerRepository(sql, ledgerName, row.tenant_name, row.tenant_id);
     await repository.load();
 
     context.set("tenantId", row.tenant_id);
+    context.set("ledgerName", ledgerName);
     context.set("services", createServiceContainer(repository));
     await next();
   };
