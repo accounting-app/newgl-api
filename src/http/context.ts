@@ -38,3 +38,15 @@ export function getUserId(context: Context): string {
 export function getUserEmail(context: Context): string | null {
   return (context.get("userEmail") as string | null | undefined) ?? null;
 }
+
+// The company (ledger) this request is scoped to -- resolved once by
+// tenantContext from the caller's membership.active_ledger_name, falling
+// back to the tenant's primary ledger. See newgl-specs/INSTANCE_ARCHITECTURE_PLAN.md
+// Phase A.
+export function getLedgerName(context: Context): string {
+  const ledgerName = context.get("ledgerName") as string | undefined;
+  if (!ledgerName) {
+    throw new Error("No ledgerName on request context.");
+  }
+  return ledgerName;
+}

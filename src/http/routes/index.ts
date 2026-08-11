@@ -8,3 +8,4 @@ export { ledgerDownloadRoutes } from "@/http/routes/ledger-download";
 export { tenantRoutes } from "@/http/routes/tenants";
 export { ledgerRoutesV2 } from "@/http/routes/ledgers";
 export { aiRoutes } from "@/http/routes/ai";
+export { companyRoutes } from "@/http/routes/companies";
