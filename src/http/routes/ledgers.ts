@@ -29,10 +29,15 @@ const ledgerVersionSummarySchema = zod.object({
   createdAt: zod.string()
 });
 
+const ledgerDownloadQuery = zod.object({
+  from: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: zod.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
+
 const ledgerDownloadRoute = createRoute({
   method: "get",
   path: "/api/ledgers/{name}/download",
-  request: { params: ledgerNameParam },
+  request: { params: ledgerNameParam, query: ledgerDownloadQuery },
   responses: {
     200: {
       content: { "text/plain": { schema: zod.string() } },
@@ -123,6 +128,7 @@ const ledgerRestoreRoute = createRoute({
 export function ledgerRoutesV2(app: OpenAPIHono): void {
   app.openapi(ledgerDownloadRoute, async (context) => {
     const { name } = context.req.valid("param");
+    const { from, to } = context.req.valid("query");
     const tenantId = getTenantId(context);
     const sql = getSql();
 
@@ -134,8 +140,25 @@ export function ledgerRoutesV2(app: OpenAPIHono): void {
     }
 
     const { content } = rows[0] as { content: string };
-    return context.text(content, 200, {
-      "Content-Disposition": `attachment; filename="${name}.bean"`
+
+    // Full-ledger export (no range given) returns the stored content
+    // byte-for-byte -- only scoped exports round-trip through
+    // parse/serialize, so this endpoint's most common use is unaffected by
+    // any parser formatting quirks.
+    let exportContent = content;
+    if (from || to) {
+      const document = parseBeancount(content);
+      exportContent = serializeBeancount({
+        ...document,
+        transactions: document.transactions.filter(
+          (txn) => (!from || txn.date >= from) && (!to || txn.date <= to)
+        )
+      });
+    }
+
+    const filenameSuffix = from || to ? `_${from ?? "start"}_${to ?? "end"}` : "";
+    return context.text(exportContent, 200, {
+      "Content-Disposition": `attachment; filename="${name}${filenameSuffix}.bean"`
     });
   });
 
