@@ -358,3 +358,22 @@ export type BankRuleCondition = z.infer<typeof bankRuleConditionSchema>;
 export type BankRule = z.infer<typeof bankRuleSchema>;
 export type CreateBankRuleInput = z.infer<typeof createBankRuleInputSchema>;
 export type UpdateBankRuleInput = z.infer<typeof updateBankRuleInputSchema>;
+
+// Bank feed exclude memory (PLAINGL_FEATURES_TO_IMPLEMENT.md #11) -- see
+// supabase/migrations/20260813120000_create_excluded_feed_rows.sql for schema notes.
+export const excludedFeedRowSchema = z.object({
+  id: z.string().uuid(),
+  mainAccountId: z.string().min(1),
+  payee: z.string().min(1),
+  amount: z.number(),
+  createdAt: z.string()
+});
+
+export const createExcludedFeedRowInputSchema = z.object({
+  mainAccountId: z.string().min(1),
+  payee: z.string().min(1),
+  amount: z.number()
+});
+
+export type ExcludedFeedRow = z.infer<typeof excludedFeedRowSchema>;
+export type CreateExcludedFeedRowInput = z.infer<typeof createExcludedFeedRowInputSchema>;

@@ -10,3 +10,4 @@ export { ledgerRoutesV2 } from "@/http/routes/ledgers";
 export { aiRoutes } from "@/http/routes/ai";
 export { companyRoutes } from "@/http/routes/companies";
 export { bankRuleRoutes } from "@/http/routes/bank-rules";
+export { excludedFeedRowRoutes } from "@/http/routes/excluded-feed-rows";
