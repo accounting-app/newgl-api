@@ -5,6 +5,7 @@ export const QBO_CATEGORY_BY_BEAN_ROOT: Record<string, Account["category"]> = {
   "Assets:Bank": "BANK",
   "Assets:Fixed-Asset": "FIXED_ASSET",
   "Assets:Current": "OTHER_CURRENT_ASSET",
+  "Liabilities:Accounts-Payable": "ACCOUNTS_PAYABLE",
   "Liabilities:CreditCard": "CREDIT_CARD",
   "Liabilities:Long-Term": "LONG_TERM_LIABILITY",
   "Liabilities:Current": "OTHER_CURRENT_LIABILITY",
@@ -16,6 +17,7 @@ export const QBO_CATEGORY_BY_BEAN_ROOT: Record<string, Account["category"]> = {
 };
 
 export const BEAN_ROOT_BY_QBO_CATEGORY: Record<Account["category"], string> = {
+  ACCOUNTS_PAYABLE: "Liabilities:Accounts-Payable",
   ACCOUNTS_RECEIVABLE: "Assets:Accounts-Receivable",
   BANK: "Assets:Bank",
   CREDIT_CARD: "Liabilities:CreditCard",
@@ -66,6 +68,7 @@ export function categoryFromAccountPath(path: string, metadataCategory?: string)
 
 function isAccountCategory(value: string): value is Account["category"] {
   return [
+    "ACCOUNTS_PAYABLE",
     "ACCOUNTS_RECEIVABLE",
     "BANK",
     "CREDIT_CARD",
@@ -86,6 +89,7 @@ export function qboCategoryFromCsvAccountType(accountType: string): Account["cat
   if (normalized === "bank") return "BANK";
   if (normalized === "credit card") return "CREDIT_CARD";
   if (normalized === "accounts receivable") return "ACCOUNTS_RECEIVABLE";
+  if (normalized === "accounts payable") return "ACCOUNTS_PAYABLE";
   if (normalized === "fixed asset") return "FIXED_ASSET";
   if (normalized === "long term liability") return "LONG_TERM_LIABILITY";
   if (normalized === "other current assets") return "OTHER_CURRENT_ASSET";

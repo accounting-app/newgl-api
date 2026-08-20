@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const accountCategorySchema = z.enum([
+  "ACCOUNTS_PAYABLE",
   "ACCOUNTS_RECEIVABLE",
   "BANK",
   "CREDIT_CARD",
@@ -110,6 +111,8 @@ export const transactionSchema = z.object({
   type: transactionTypeSchema,
   status: transactionStatusSchema,
   transactionDate: z.string(),
+  /** Optional due date for A/R (invoice) or A/P (bill) postings -- feeds the aging report. Falls back to transactionDate when unset, matching PlainGL. */
+  dueDate: z.string().optional(),
   referenceNumber: z.string().optional(),
   memo: z.string().optional(),
   payee: z.string().optional(),
@@ -212,6 +215,7 @@ export type CreateTransactionInput = Pick<
   Transaction,
   | "type"
   | "transactionDate"
+  | "dueDate"
   | "referenceNumber"
   | "memo"
   | "payee"
@@ -248,6 +252,7 @@ export const updateAccountInputSchema = z.object({
 export const createTransactionInputSchema = z.object({
   type: transactionTypeSchema,
   transactionDate: z.string(),
+  dueDate: z.string().optional(),
   referenceNumber: z.string().optional(),
   memo: z.string().optional(),
   payee: z.string().optional(),

@@ -50,6 +50,7 @@ export class TransactionServiceImpl implements TransactionService {
         type: input.type,
         status: "DRAFT",
         transactionDate: input.transactionDate,
+        dueDate: input.dueDate,
         referenceNumber: input.referenceNumber,
         memo: input.memo,
         payee: input.payee,
