@@ -40,6 +40,43 @@ describe("service error handling", () => {
     await expect(services.accountService.getAccountById(missingId)).rejects.toThrow(NotFoundError);
   });
 
+  test("deleteAccount removes an account with zero posting activity", async () => {
+    const services = await createTestServices();
+    const account = await services.accountService.createAccount({
+      code: "1020",
+      name: "Unused Account",
+      category: "BANK"
+    });
+
+    await services.accountService.deleteAccount(account.id);
+
+    await expect(services.accountService.getAccountById(account.id)).rejects.toThrow(NotFoundError);
+  });
+
+  test("deleteAccount throws ConflictError when the account has posting activity", async () => {
+    const services = await createTestServices();
+    const bank = await services.accountService.createAccount({
+      code: "1010",
+      name: "Checking",
+      category: "BANK"
+    });
+    const expense = await services.accountService.createAccount({
+      code: "5010",
+      name: "Office",
+      category: "EXPENSE"
+    });
+    await services.transactionService.createTransaction({
+      type: "CHECK",
+      transactionDate: "2024-02-01",
+      postings: [
+        { accountId: expense.id, type: "DEBIT", amount: 50 },
+        { accountId: bank.id, type: "CREDIT", amount: 50 }
+      ]
+    });
+
+    await expect(services.accountService.deleteAccount(bank.id)).rejects.toThrow(ConflictError);
+  });
+
   test("createTransaction throws ValidationError for unbalanced postings", async () => {
     const services = await createTestServices();
     const bank = await services.accountService.createAccount({

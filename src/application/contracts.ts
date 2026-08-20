@@ -17,6 +17,8 @@ export interface AccountService {
   createAccount(input: CreateAccountInput): Promise<Account>;
   updateAccount(id: string, input: UpdateAccountInput): Promise<Account>;
   closeAccount(id: string): Promise<void>;
+  /** Permanently removes an account with zero posting activity. Throws if any transaction posts to it -- use closeAccount (Archive) instead for accounts with history. */
+  deleteAccount(id: string): Promise<void>;
   getAccountById(id: string): Promise<Account>;
   listAccounts(): Promise<Account[]>;
   getAccountHierarchy(): Promise<AccountHierarchy>;
