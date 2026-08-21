@@ -328,7 +328,13 @@ export const errorResponseSchema = z.object({
 
 // Deterministic bank rules (PLAINGL_FEATURES_TO_IMPLEMENT.md #7) -- see
 // supabase/migrations/20260812120000_create_bank_rules.sql for schema notes.
-export const bankRuleFieldSchema = z.enum(["payee", "memo", "amount"]);
+// "rawMemo" matches the bank's original, unprocessed description text before
+// any cleanup/aliasing -- distinct from "memo", which is whatever the CSV
+// import mapped into the row's user-facing memo (PlainGL parity: PlainGL
+// rules can match either independently). Only CSV-imported rows carry a raw
+// value distinct from memo; other paths (manual entries) have no separate
+// raw source text, so callers fall back to memo there.
+export const bankRuleFieldSchema = z.enum(["payee", "memo", "rawMemo", "amount"]);
 
 export const bankRuleTextOperatorSchema = z.enum(["contains", "not_contains", "equals", "starts_with", "regex"]);
 export const bankRuleAmountOperatorSchema = z.enum(["greater_than", "less_than", "between"]);
