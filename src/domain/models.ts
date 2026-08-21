@@ -262,15 +262,26 @@ export const createTransactionInputSchema = z.object({
   postings: z.array(transactionPostingInputSchema).min(2)
 });
 
-export const importTransactionRowInputSchema = z.object({
-  clientRowId: z.string(),
-  transactionDate: z.string(),
-  payee: z.string().optional(),
-  memo: z.string().optional(),
-  amount: z.number(),
-  categoryAccountId: z.string().uuid(),
-  referenceNumber: z.string().optional()
+export const importTransactionCategorySplitSchema = z.object({
+  accountId: z.string().uuid(),
+  amount: z.number().positive()
 });
+
+export const importTransactionRowInputSchema = z
+  .object({
+    clientRowId: z.string(),
+    transactionDate: z.string(),
+    payee: z.string().optional(),
+    memo: z.string().optional(),
+    amount: z.number(),
+    /** Single-category rows set this; multi-category rows set categorySplits instead -- exactly one of the two must be present. */
+    categoryAccountId: z.string().uuid().optional(),
+    categorySplits: z.array(importTransactionCategorySplitSchema).min(2).optional(),
+    referenceNumber: z.string().optional()
+  })
+  .refine((row) => (row.categoryAccountId ? !row.categorySplits : !!row.categorySplits), {
+    message: "A row must set exactly one of categoryAccountId or categorySplits."
+  });
 
 export const importTransactionsInputSchema = z.object({
   mainAccountId: z.string().uuid(),
@@ -290,6 +301,7 @@ export const importTransactionsResultSchema = z.object({
   results: z.array(importTransactionRowResultSchema)
 });
 
+export type ImportTransactionCategorySplit = z.infer<typeof importTransactionCategorySplitSchema>;
 export type ImportTransactionRowInput = z.infer<typeof importTransactionRowInputSchema>;
 export type ImportTransactionsInput = z.infer<typeof importTransactionsInputSchema>;
 export type ImportTransactionRowResult = z.infer<typeof importTransactionRowResultSchema>;
