@@ -169,6 +169,20 @@ export class AccountServiceImpl implements AccountService {
     });
   }
 
+  async deleteAccount(id: string): Promise<void> {
+    await this.repository.mutate(async (store) => {
+      const account = requireAccount(store.accounts, id);
+      const hasActivity = store.transactions.some((transaction) =>
+        transaction.postings.some((posting) => posting.accountId === id)
+      );
+      if (hasActivity) {
+        throw new ConflictError(`"${account.name}" has transaction activity and can't be deleted -- archive it instead.`);
+      }
+      store.accounts = store.accounts.filter((item) => item.id !== id);
+      store.chartAccounts = store.chartAccounts.filter((item) => item.id !== id);
+    });
+  }
+
   async getAccountById(id: string): Promise<Account> {
     return requireAccount(this.repository.getStore().accounts, id);
   }

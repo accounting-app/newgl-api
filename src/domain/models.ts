@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const accountCategorySchema = z.enum([
+  "ACCOUNTS_PAYABLE",
   "ACCOUNTS_RECEIVABLE",
   "BANK",
   "CREDIT_CARD",
@@ -110,6 +111,8 @@ export const transactionSchema = z.object({
   type: transactionTypeSchema,
   status: transactionStatusSchema,
   transactionDate: z.string(),
+  /** Optional due date for A/R (invoice) or A/P (bill) postings -- feeds the aging report. Falls back to transactionDate when unset, matching PlainGL. */
+  dueDate: z.string().optional(),
   referenceNumber: z.string().optional(),
   memo: z.string().optional(),
   payee: z.string().optional(),
@@ -212,6 +215,7 @@ export type CreateTransactionInput = Pick<
   Transaction,
   | "type"
   | "transactionDate"
+  | "dueDate"
   | "referenceNumber"
   | "memo"
   | "payee"
@@ -248,6 +252,7 @@ export const updateAccountInputSchema = z.object({
 export const createTransactionInputSchema = z.object({
   type: transactionTypeSchema,
   transactionDate: z.string(),
+  dueDate: z.string().optional(),
   referenceNumber: z.string().optional(),
   memo: z.string().optional(),
   payee: z.string().optional(),
@@ -257,15 +262,26 @@ export const createTransactionInputSchema = z.object({
   postings: z.array(transactionPostingInputSchema).min(2)
 });
 
-export const importTransactionRowInputSchema = z.object({
-  clientRowId: z.string(),
-  transactionDate: z.string(),
-  payee: z.string().optional(),
-  memo: z.string().optional(),
-  amount: z.number(),
-  categoryAccountId: z.string().uuid(),
-  referenceNumber: z.string().optional()
+export const importTransactionCategorySplitSchema = z.object({
+  accountId: z.string().uuid(),
+  amount: z.number().positive()
 });
+
+export const importTransactionRowInputSchema = z
+  .object({
+    clientRowId: z.string(),
+    transactionDate: z.string(),
+    payee: z.string().optional(),
+    memo: z.string().optional(),
+    amount: z.number(),
+    /** Single-category rows set this; multi-category rows set categorySplits instead -- exactly one of the two must be present. */
+    categoryAccountId: z.string().uuid().optional(),
+    categorySplits: z.array(importTransactionCategorySplitSchema).min(2).optional(),
+    referenceNumber: z.string().optional()
+  })
+  .refine((row) => (row.categoryAccountId ? !row.categorySplits : !!row.categorySplits), {
+    message: "A row must set exactly one of categoryAccountId or categorySplits."
+  });
 
 export const importTransactionsInputSchema = z.object({
   mainAccountId: z.string().uuid(),
@@ -285,6 +301,7 @@ export const importTransactionsResultSchema = z.object({
   results: z.array(importTransactionRowResultSchema)
 });
 
+export type ImportTransactionCategorySplit = z.infer<typeof importTransactionCategorySplitSchema>;
 export type ImportTransactionRowInput = z.infer<typeof importTransactionRowInputSchema>;
 export type ImportTransactionsInput = z.infer<typeof importTransactionsInputSchema>;
 export type ImportTransactionRowResult = z.infer<typeof importTransactionRowResultSchema>;
@@ -311,7 +328,13 @@ export const errorResponseSchema = z.object({
 
 // Deterministic bank rules (PLAINGL_FEATURES_TO_IMPLEMENT.md #7) -- see
 // supabase/migrations/20260812120000_create_bank_rules.sql for schema notes.
-export const bankRuleFieldSchema = z.enum(["payee", "memo", "amount"]);
+// "rawMemo" matches the bank's original, unprocessed description text before
+// any cleanup/aliasing -- distinct from "memo", which is whatever the CSV
+// import mapped into the row's user-facing memo (PlainGL parity: PlainGL
+// rules can match either independently). Only CSV-imported rows carry a raw
+// value distinct from memo; other paths (manual entries) have no separate
+// raw source text, so callers fall back to memo there.
+export const bankRuleFieldSchema = z.enum(["payee", "memo", "rawMemo", "amount"]);
 
 export const bankRuleTextOperatorSchema = z.enum(["contains", "not_contains", "equals", "starts_with", "regex"]);
 export const bankRuleAmountOperatorSchema = z.enum(["greater_than", "less_than", "between"]);
@@ -325,6 +348,8 @@ export const bankRuleConditionSchema = z.object({
   valueTo: z.string().min(1).optional()
 });
 
+export const bankRuleDirectionSchema = z.enum(["ANY", "INFLOW", "OUTFLOW"]);
+
 export const bankRuleSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -332,6 +357,12 @@ export const bankRuleSchema = z.object({
   conditions: z.array(bankRuleConditionSchema).min(1),
   enabled: z.boolean(),
   priority: z.number().int(),
+  /** Posts matched rows immediately, bypassing manual review -- see the CSV import wizard's "Auto-post N" action. */
+  autoPost: z.boolean(),
+  /** Restricts which side of a transaction this rule can match: money in, money out, or either. */
+  direction: bankRuleDirectionSchema,
+  /** When set, this rule only applies to imports into this specific account. Undefined/null = applies to every account. */
+  scopedAccountId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -341,7 +372,10 @@ export const createBankRuleInputSchema = z.object({
   targetAccountId: z.string().min(1),
   conditions: z.array(bankRuleConditionSchema).min(1),
   enabled: z.boolean().optional(),
-  priority: z.number().int().optional()
+  priority: z.number().int().optional(),
+  autoPost: z.boolean().optional(),
+  direction: bankRuleDirectionSchema.optional(),
+  scopedAccountId: z.string().optional()
 });
 
 export const updateBankRuleInputSchema = z.object({
@@ -349,7 +383,10 @@ export const updateBankRuleInputSchema = z.object({
   targetAccountId: z.string().min(1).optional(),
   conditions: z.array(bankRuleConditionSchema).min(1).optional(),
   enabled: z.boolean().optional(),
-  priority: z.number().int().optional()
+  priority: z.number().int().optional(),
+  autoPost: z.boolean().optional(),
+  direction: bankRuleDirectionSchema.optional(),
+  scopedAccountId: z.string().nullable().optional()
 });
 
 export type BankRuleField = z.infer<typeof bankRuleFieldSchema>;

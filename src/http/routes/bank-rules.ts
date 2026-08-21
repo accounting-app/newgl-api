@@ -15,6 +15,9 @@ type BankRuleRow = {
   conditions: unknown;
   enabled: boolean;
   priority: number;
+  auto_post: boolean;
+  direction: string;
+  scoped_account_id: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -27,6 +30,9 @@ function serializeRule(row: BankRuleRow) {
     conditions: row.conditions as BankRuleCondition[],
     enabled: row.enabled,
     priority: row.priority,
+    autoPost: row.auto_post,
+    direction: row.direction as "ANY" | "INFLOW" | "OUTFLOW",
+    scopedAccountId: row.scoped_account_id ?? undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString()
   };
@@ -82,7 +88,7 @@ export function bankRuleRoutes(app: OpenAPIHono): void {
     const tenantId = getTenantId(context);
     const sql = getSql();
     const rows = (await sql`
-      select id, name, target_account_id, conditions, enabled, priority, created_at, updated_at
+      select id, name, target_account_id, conditions, enabled, priority, auto_post, direction, scoped_account_id, created_at, updated_at
       from bank_rules
       where tenant_id = ${tenantId}
       order by priority desc, created_at asc
@@ -97,16 +103,19 @@ export function bankRuleRoutes(app: OpenAPIHono): void {
     const sql = getSql();
 
     const rows = (await sql`
-      insert into bank_rules (tenant_id, name, target_account_id, conditions, enabled, priority)
+      insert into bank_rules (tenant_id, name, target_account_id, conditions, enabled, priority, auto_post, direction, scoped_account_id)
       values (
         ${tenantId},
         ${input.name},
         ${input.targetAccountId},
         ${JSON.stringify(input.conditions)},
         ${input.enabled ?? true},
-        ${input.priority ?? 0}
+        ${input.priority ?? 0},
+        ${input.autoPost ?? false},
+        ${input.direction ?? "ANY"},
+        ${input.scopedAccountId ?? null}
       )
-      returning id, name, target_account_id, conditions, enabled, priority, created_at, updated_at
+      returning id, name, target_account_id, conditions, enabled, priority, auto_post, direction, scoped_account_id, created_at, updated_at
     `) as unknown as BankRuleRow[];
 
     return context.json(serializeRule(rows[0]), 200);
@@ -119,7 +128,7 @@ export function bankRuleRoutes(app: OpenAPIHono): void {
     const sql = getSql();
 
     const existing = (await sql`
-      select id, name, target_account_id, conditions, enabled, priority
+      select id, name, target_account_id, conditions, enabled, priority, auto_post, direction, scoped_account_id
       from bank_rules where id = ${id} and tenant_id = ${tenantId} limit 1
     `) as unknown as BankRuleRow[];
     if (existing.length === 0) {
@@ -132,6 +141,9 @@ export function bankRuleRoutes(app: OpenAPIHono): void {
     const nextConditions = input.conditions ? JSON.stringify(input.conditions) : JSON.stringify(current.conditions);
     const nextEnabled = input.enabled ?? current.enabled;
     const nextPriority = input.priority ?? current.priority;
+    const nextAutoPost = input.autoPost ?? current.auto_post;
+    const nextDirection = input.direction ?? current.direction;
+    const nextScopedAccountId = input.scopedAccountId !== undefined ? input.scopedAccountId : current.scoped_account_id;
 
     const rows = (await sql`
       update bank_rules set
@@ -140,9 +152,12 @@ export function bankRuleRoutes(app: OpenAPIHono): void {
         conditions = ${nextConditions},
         enabled = ${nextEnabled},
         priority = ${nextPriority},
+        auto_post = ${nextAutoPost},
+        direction = ${nextDirection},
+        scoped_account_id = ${nextScopedAccountId},
         updated_at = now()
       where id = ${id} and tenant_id = ${tenantId}
-      returning id, name, target_account_id, conditions, enabled, priority, created_at, updated_at
+      returning id, name, target_account_id, conditions, enabled, priority, auto_post, direction, scoped_account_id, created_at, updated_at
     `) as unknown as BankRuleRow[];
 
     return context.json(serializeRule(rows[0]), 200);

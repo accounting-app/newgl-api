@@ -76,6 +76,27 @@ const accountUpdateRoute = createRoute({
   }
 });
 
+const accountDeleteRoute = createRoute({
+  method: "delete",
+  path: "/api/accounts/{accountId}",
+  request: {
+    params: zod.object({ accountId: zod.string().uuid() })
+  },
+  responses: {
+    204: {
+      description: "Account deleted"
+    },
+    404: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "Not found"
+    },
+    409: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "Account has transaction activity"
+    }
+  }
+});
+
 const accountRegisterRoute = createRoute({
   method: "get",
   path: "/api/accounts/{accountId}/register",
@@ -113,6 +134,12 @@ export function accountRoutes(app: OpenAPIHono): void {
     const input = context.req.valid("json");
     const account = await getServices(context).accountService.updateAccount(accountId, input);
     return context.json(account, 200);
+  });
+
+  app.openapi(accountDeleteRoute, async (context) => {
+    const { accountId } = context.req.valid("param");
+    await getServices(context).accountService.deleteAccount(accountId);
+    return context.body(null, 204);
   });
 
   app.openapi(accountRegisterRoute, async (context) => {

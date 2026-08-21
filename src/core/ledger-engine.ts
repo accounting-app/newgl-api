@@ -16,6 +16,7 @@ import { createId } from "@/shared/utils/id";
 import { nowIso } from "@/shared/utils/date";
 
 const ACCOUNT_TYPE_BY_CATEGORY: Record<Account["category"], ChartOfAccount["accountType"]> = {
+  ACCOUNTS_PAYABLE: "LIABILITY",
   ACCOUNTS_RECEIVABLE: "ASSET",
   BANK: "ASSET",
   CREDIT_CARD: "LIABILITY",

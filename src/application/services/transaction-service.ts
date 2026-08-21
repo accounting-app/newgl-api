@@ -50,6 +50,7 @@ export class TransactionServiceImpl implements TransactionService {
         type: input.type,
         status: "DRAFT",
         transactionDate: input.transactionDate,
+        dueDate: input.dueDate,
         referenceNumber: input.referenceNumber,
         memo: input.memo,
         payee: input.payee,
@@ -241,19 +242,27 @@ export class TransactionServiceImpl implements TransactionService {
           if (amount === 0) {
             throw new ValidationError("Amount must not be zero.");
           }
-          if (input.mainAccountId === row.categoryAccountId) {
+
+          // Single-category rows are just the N=1 case of a split: one leg
+          // carrying the full amount. Both shapes converge on the same
+          // posting-construction logic below.
+          const categoryLegs = row.categorySplits ?? [{ accountId: row.categoryAccountId!, amount }];
+
+          if (categoryLegs.some((leg) => leg.accountId === input.mainAccountId)) {
             throw new ValidationError("Main account and category account must differ.");
           }
+          const splitTotal = categoryLegs.reduce((sum, leg) => sum + leg.amount, 0);
+          if (Math.abs(splitTotal - amount) > 0.005) {
+            throw new ValidationError(
+              `Split amounts (${splitTotal.toFixed(2)}) must add up to the row amount (${amount.toFixed(2)}).`
+            );
+          }
 
-          const postings: TransactionPostingInput[] = isOutflow
-            ? [
-                { accountId: input.mainAccountId, type: "CREDIT", amount },
-                { accountId: row.categoryAccountId, type: "DEBIT", amount }
-              ]
-            : [
-                { accountId: input.mainAccountId, type: "DEBIT", amount },
-                { accountId: row.categoryAccountId, type: "CREDIT", amount }
-              ];
+          const categorySide = isOutflow ? "DEBIT" : "CREDIT";
+          const postings: TransactionPostingInput[] = [
+            { accountId: input.mainAccountId, type: isOutflow ? "CREDIT" : "DEBIT", amount },
+            ...categoryLegs.map((leg) => ({ accountId: leg.accountId, type: categorySide as "DEBIT" | "CREDIT", amount: leg.amount }))
+          ];
 
           validateDoubleEntry(postings);
           validateTransactionPeriod(row.transactionDate);

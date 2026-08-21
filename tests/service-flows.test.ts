@@ -153,6 +153,71 @@ describe("service flows", () => {
     expect(posted).toHaveLength(1);
   });
 
+  test("importTransactions splits a row across multiple category accounts", async () => {
+    const { services } = await createTestServices();
+    const { bank, expense } = await seedBankAndExpense(services);
+    const otherExpense = await services.accountService.createAccount({
+      code: "5011",
+      name: "Software",
+      category: "EXPENSE"
+    });
+
+    const result = await services.transactionService.importTransactions({
+      mainAccountId: bank.id,
+      rows: [
+        {
+          clientRowId: "row-split",
+          transactionDate: "2024-02-01",
+          payee: "Office Depot",
+          amount: -100,
+          categorySplits: [
+            { accountId: expense.id, amount: 60 },
+            { accountId: otherExpense.id, amount: 40 }
+          ]
+        }
+      ]
+    });
+
+    expect(result.succeeded).toBe(1);
+    expect(result.failed).toBe(0);
+
+    const posted = await services.transactionService.listTransactions({ status: "POSTED", sourceAccountId: bank.id });
+    expect(posted).toHaveLength(1);
+    expect(posted[0].postings).toHaveLength(3);
+    expect((await services.accountService.getAccountById(expense.id)).currentBalance).toBe(60);
+    expect((await services.accountService.getAccountById(otherExpense.id)).currentBalance).toBe(40);
+  });
+
+  test("importTransactions rejects a split row whose amounts don't add up", async () => {
+    const { services } = await createTestServices();
+    const { bank, expense } = await seedBankAndExpense(services);
+    const otherExpense = await services.accountService.createAccount({
+      code: "5011",
+      name: "Software",
+      category: "EXPENSE"
+    });
+
+    const result = await services.transactionService.importTransactions({
+      mainAccountId: bank.id,
+      rows: [
+        {
+          clientRowId: "row-unbalanced",
+          transactionDate: "2024-02-01",
+          amount: -100,
+          categorySplits: [
+            { accountId: expense.id, amount: 60 },
+            { accountId: otherExpense.id, amount: 30 }
+          ]
+        }
+      ]
+    });
+
+    expect(result.succeeded).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.results[0].status).toBe("FAILED");
+    expect(result.results[0].error).toMatch(/add up/);
+  });
+
   test("voiding an imported transaction creates a reversal like any other posted transaction", async () => {
     const { services } = await createTestServices();
     const { bank, expense } = await seedBankAndExpense(services);

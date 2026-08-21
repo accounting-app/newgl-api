@@ -115,6 +115,23 @@ const switchCompanyRoute = createRoute({
   }
 });
 
+const deleteCompanyRoute = createRoute({
+  method: "delete",
+  path: "/api/companies/{name}",
+  request: { params: companyNameParam },
+  responses: {
+    204: { description: "Company deleted" },
+    404: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "No company with that name for this tenant"
+    },
+    409: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "Cannot delete the tenant's primary company"
+    }
+  }
+});
+
 /**
  * Phase A (multi-company support) -- see newgl-specs/INSTANCE_ARCHITECTURE_PLAN.md.
  * "Active company" is a per-user preference stored on the membership row,
@@ -264,5 +281,35 @@ export function companyRoutes(app: OpenAPIHono): void {
       { name: row.name, isPrimary: row.is_primary, isActive: true, updatedAt: row.updated_at.toISOString() },
       200
     );
+  });
+
+  app.openapi(deleteCompanyRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const { name } = context.req.valid("param");
+    const sql = getSql();
+
+    const rows = await sql`
+      select id, is_primary from ledgers where tenant_id = ${tenantId} and name = ${name} limit 1
+    `;
+    if (rows.length === 0) {
+      return context.json({ error: `No company named '${name}' for this tenant` }, 404);
+    }
+    const row = rows[0] as { id: string; is_primary: boolean };
+    if (row.is_primary) {
+      return context.json({ error: "Cannot delete the primary company." }, 409);
+    }
+
+    await sql.begin(async (tx) => {
+      // Any member whose explicit choice pointed at this company falls back
+      // to the tenant's primary ledger, the same as if they'd never switched --
+      // see the null-fallback comment on memberships.active_ledger_name.
+      await tx`
+        update memberships set active_ledger_name = null
+        where tenant_id = ${tenantId} and active_ledger_name = ${name}
+      `;
+      await tx`delete from ledgers where id = ${row.id}`;
+    });
+
+    return context.body(null, 204);
   });
 }
