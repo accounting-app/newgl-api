@@ -342,6 +342,8 @@ export const bankRuleConditionSchema = z.object({
   valueTo: z.string().min(1).optional()
 });
 
+export const bankRuleDirectionSchema = z.enum(["ANY", "INFLOW", "OUTFLOW"]);
+
 export const bankRuleSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -349,6 +351,12 @@ export const bankRuleSchema = z.object({
   conditions: z.array(bankRuleConditionSchema).min(1),
   enabled: z.boolean(),
   priority: z.number().int(),
+  /** Posts matched rows immediately, bypassing manual review -- see the CSV import wizard's "Auto-post N" action. */
+  autoPost: z.boolean(),
+  /** Restricts which side of a transaction this rule can match: money in, money out, or either. */
+  direction: bankRuleDirectionSchema,
+  /** When set, this rule only applies to imports into this specific account. Undefined/null = applies to every account. */
+  scopedAccountId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -358,7 +366,10 @@ export const createBankRuleInputSchema = z.object({
   targetAccountId: z.string().min(1),
   conditions: z.array(bankRuleConditionSchema).min(1),
   enabled: z.boolean().optional(),
-  priority: z.number().int().optional()
+  priority: z.number().int().optional(),
+  autoPost: z.boolean().optional(),
+  direction: bankRuleDirectionSchema.optional(),
+  scopedAccountId: z.string().optional()
 });
 
 export const updateBankRuleInputSchema = z.object({
@@ -366,7 +377,10 @@ export const updateBankRuleInputSchema = z.object({
   targetAccountId: z.string().min(1).optional(),
   conditions: z.array(bankRuleConditionSchema).min(1).optional(),
   enabled: z.boolean().optional(),
-  priority: z.number().int().optional()
+  priority: z.number().int().optional(),
+  autoPost: z.boolean().optional(),
+  direction: bankRuleDirectionSchema.optional(),
+  scopedAccountId: z.string().nullable().optional()
 });
 
 export type BankRuleField = z.infer<typeof bankRuleFieldSchema>;
