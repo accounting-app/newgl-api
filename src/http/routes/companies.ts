@@ -4,7 +4,12 @@ import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { Account, LedgerStore } from "@/domain/models";
 import { errorResponseSchema } from "@/domain/models";
 import { COMPANY_TEMPLATES, findCompanyTemplate } from "@/domain/company-templates";
-import { defaultDocument, parseBeancount, serializeBeancount } from "@/infra/beancount/parser";
+import {
+  defaultDocument,
+  isPlausibleBeancountDocument,
+  parseBeancount,
+  serializeBeancount
+} from "@/infra/beancount/parser";
 import { documentToStore, storeToDocument } from "@/infra/beancount/mapper";
 import { getLedgerName, getTenantId, getUserId } from "@/http/context";
 import { getSql } from "@/infra/postgres/client";
@@ -16,11 +21,17 @@ const companyNameParam = zod.object({ name: zod.string().min(1) });
 
 const createCompanyInputSchema = zod.object({
   name: zod.string().trim().min(1).max(100),
-  // At most one of these -- omitting both creates a blank company (the
-  // existing behavior). Mutually exclusive, validated in the handler since
-  // zod's object schema doesn't express "at most one of" cleanly here.
+  // Optional friendly display name, distinct from `name` -- shown in the
+  // Ledger settings page's file list. Null/omitted falls back to `name`.
+  label: zod.string().trim().min(1).max(200).optional(),
+  // At most one of these three -- omitting all three creates a blank
+  // company (the existing behavior). Mutually exclusive, validated in the
+  // handler since zod's object schema doesn't express "at most one of"
+  // cleanly here. `content` is the "upload a .bean file as a new file"
+  // path -- raw text, validated the same way ledger upload validates it.
   templateId: zod.string().optional(),
-  duplicateFromName: zod.string().optional()
+  duplicateFromName: zod.string().optional(),
+  content: zod.string().optional()
 });
 
 const companyTemplateSchema = zod.object({
@@ -57,9 +68,14 @@ function emptyStore(accounts: Account[]): LedgerStore {
 
 const companySchema = zod.object({
   name: zod.string(),
+  label: zod.string().optional(),
   isPrimary: zod.boolean(),
   isActive: zod.boolean(),
   updatedAt: zod.string()
+});
+
+const updateCompanyInputSchema = zod.object({
+  label: zod.string().trim().min(1).max(200).nullable()
 });
 
 const listCompaniesRoute = createRoute({
@@ -86,7 +102,7 @@ const createCompanyRoute = createRoute({
     },
     400: {
       content: { "application/json": { schema: errorResponseSchema } },
-      description: "Invalid template id, or both templateId and duplicateFromName given"
+      description: "Invalid template id, more than one of templateId/duplicateFromName/content given, or content that doesn't parse as valid Beancount"
     },
     404: {
       content: { "application/json": { schema: errorResponseSchema } },
@@ -95,6 +111,22 @@ const createCompanyRoute = createRoute({
     409: {
       content: { "application/json": { schema: errorResponseSchema } },
       description: "A company with that name already exists for this tenant"
+    }
+  }
+});
+
+const updateCompanyRoute = createRoute({
+  method: "patch",
+  path: "/api/companies/{name}",
+  request: {
+    params: companyNameParam,
+    body: { content: { "application/json": { schema: updateCompanyInputSchema } }, required: true }
+  },
+  responses: {
+    200: { content: { "application/json": { schema: companySchema } }, description: "The updated company" },
+    404: {
+      content: { "application/json": { schema: errorResponseSchema } },
+      description: "No company with that name for this tenant"
     }
   }
 });
@@ -154,7 +186,7 @@ export function companyRoutes(app: OpenAPIHono): void {
     const sql = getSql();
 
     const rows = await sql`
-      select name, is_primary, updated_at
+      select name, label, is_primary, updated_at
       from ledgers
       where tenant_id = ${tenantId}
       order by is_primary desc, name asc
@@ -162,9 +194,10 @@ export function companyRoutes(app: OpenAPIHono): void {
 
     return context.json(
       rows.map((row: unknown) => {
-        const typedRow = row as { name: string; is_primary: boolean; updated_at: Date };
+        const typedRow = row as { name: string; label: string | null; is_primary: boolean; updated_at: Date };
         return {
           name: typedRow.name,
+          label: typedRow.label ?? undefined,
           isPrimary: typedRow.is_primary,
           isActive: typedRow.name === activeLedgerName,
           updatedAt: typedRow.updated_at.toISOString()
@@ -176,11 +209,15 @@ export function companyRoutes(app: OpenAPIHono): void {
 
   app.openapi(createCompanyRoute, async (context) => {
     const tenantId = getTenantId(context);
-    const { name, templateId, duplicateFromName } = context.req.valid("json");
+    const { name, label, templateId, duplicateFromName, content: uploadedContent } = context.req.valid("json");
     const sql = getSql();
 
-    if (templateId && duplicateFromName) {
-      return context.json({ error: "Choose either a template or a company to duplicate, not both." }, 400);
+    const modesGiven = [templateId, duplicateFromName, uploadedContent].filter((v) => v !== undefined).length;
+    if (modesGiven > 1) {
+      return context.json(
+        { error: "Choose at most one of a template, a company to duplicate, or uploaded content." },
+        400
+      );
     }
 
     const existing = await sql`
@@ -191,7 +228,17 @@ export function companyRoutes(app: OpenAPIHono): void {
     }
 
     let content: string;
-    if (templateId) {
+    if (uploadedContent !== undefined) {
+      // Same validation the ledger upload endpoint runs -- a malformed
+      // upload must never become a new company's source of truth. See
+      // ledgers.ts's own comment on parseBeancount's leniency for why
+      // isPlausibleBeancountDocument is a required second check.
+      const parsed = parseBeancount(uploadedContent);
+      if (!isPlausibleBeancountDocument(uploadedContent, parsed)) {
+        return context.json({ error: "That file doesn't look like a valid Beancount ledger." }, 400);
+      }
+      content = uploadedContent;
+    } else if (templateId) {
       const template = findCompanyTemplate(templateId);
       if (!template) {
         return context.json({ error: `Unknown template '${templateId}'` }, 400);
@@ -243,17 +290,46 @@ export function companyRoutes(app: OpenAPIHono): void {
 
     await sql.begin(async (tx) => {
       const [ledger] = await tx`
-        insert into ledgers (tenant_id, name, is_primary, content, content_hash, version)
-        values (${tenantId}, ${name}, false, ${content}, ${hash}, 1)
+        insert into ledgers (tenant_id, name, label, is_primary, content, content_hash, version)
+        values (${tenantId}, ${name}, ${label ?? null}, false, ${content}, ${hash}, 1)
         returning id
       `;
       await tx`
         insert into ledger_versions (ledger_id, version, content, content_hash, source)
-        values (${ledger.id}, 1, ${content}, ${hash}, 'bootstrap')
+        values (${ledger.id}, 1, ${content}, ${hash}, ${uploadedContent !== undefined ? "upload" : "bootstrap"})
       `;
     });
 
-    return context.json({ name, isPrimary: false, isActive: false, updatedAt: new Date().toISOString() }, 200);
+    return context.json({ name, label, isPrimary: false, isActive: false, updatedAt: new Date().toISOString() }, 200);
+  });
+
+  app.openapi(updateCompanyRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const activeLedgerName = getLedgerName(context);
+    const { name } = context.req.valid("param");
+    const { label } = context.req.valid("json");
+    const sql = getSql();
+
+    const rows = await sql`
+      update ledgers set label = ${label}, updated_at = now()
+      where tenant_id = ${tenantId} and name = ${name}
+      returning name, label, is_primary, updated_at
+    `;
+    if (rows.length === 0) {
+      return context.json({ error: `No company named '${name}' for this tenant` }, 404);
+    }
+    const row = rows[0] as { name: string; label: string | null; is_primary: boolean; updated_at: Date };
+
+    return context.json(
+      {
+        name: row.name,
+        label: row.label ?? undefined,
+        isPrimary: row.is_primary,
+        isActive: row.name === activeLedgerName,
+        updatedAt: row.updated_at.toISOString()
+      },
+      200
+    );
   });
 
   app.openapi(switchCompanyRoute, async (context) => {
