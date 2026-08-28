@@ -200,4 +200,104 @@ describe("Company management routes", () => {
     }>;
     expect(companies).toEqual([{ name: "company", isPrimary: true, isActive: true, updatedAt: companies[0].updatedAt }]);
   });
+
+  test("create accepts an optional label, returned by both create and list", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("label");
+
+    const createRes = await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Payroll Co", label: "Payroll ledger" })
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { name: string; label?: string };
+    expect(created.label).toBe("Payroll ledger");
+
+    const companies = (await (await app.request("/api/companies", { headers })).json()) as Array<{
+      name: string;
+      label?: string;
+    }>;
+    expect(companies.find((c) => c.name === "Payroll Co")?.label).toBe("Payroll ledger");
+  });
+
+  test("create from uploaded content creates a new company with that content", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("from-content");
+
+    const bean = [
+      'option "title" "Uploaded Co"',
+      'option "operating_currency" "USD"',
+      "",
+      "2024-01-01 open Assets:Cash USD",
+      '  id: "acct-cash"'
+    ].join("\n");
+
+    const res = await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Uploaded Co", content: bean })
+    });
+    expect(res.status).toBe(200);
+
+    const downloadRes = await app.request("/api/ledgers/Uploaded%20Co/download", { headers });
+    expect(downloadRes.status).toBe(200);
+    expect(await downloadRes.text()).toBe(bean);
+  });
+
+  test("create rejects content that doesn't look like a valid Beancount ledger", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("bad-content");
+
+    const res = await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Garbage Co", content: "this is not a ledger at all" })
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("create rejects more than one of templateId/duplicateFromName/content", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("multi-mode");
+
+    const res = await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Bad Co", templateId: "freelancer", content: "whatever" })
+    });
+    expect(res.status).toBe(400);
+  });
+
+  test("PATCH updates a company's label", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("patch-label");
+
+    const patchRes = await app.request("/api/companies/company", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "My main books" })
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { label?: string };
+    expect(patched.label).toBe("My main books");
+
+    const companies = (await (await app.request("/api/companies", { headers })).json()) as Array<{
+      name: string;
+      label?: string;
+    }>;
+    expect(companies.find((c) => c.name === "company")?.label).toBe("My main books");
+  });
+
+  test("PATCH on an unknown company returns 404", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("patch-404");
+
+    const res = await app.request("/api/companies/Nope", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ label: "x" })
+    });
+    expect(res.status).toBe(404);
+  });
 });
