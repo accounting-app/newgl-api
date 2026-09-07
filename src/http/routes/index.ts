@@ -13,3 +13,4 @@ export { bankRuleRoutes } from "@/http/routes/bank-rules";
 export { excludedFeedRowRoutes } from "@/http/routes/excluded-feed-rows";
 export { ledgerFileRoutes } from "@/http/routes/ledger-files";
 export { vendorRoutes } from "@/http/routes/vendors";
+export { mileageRoutes } from "@/http/routes/mileage";
