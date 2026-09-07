@@ -15,3 +15,4 @@ export { ledgerFileRoutes } from "@/http/routes/ledger-files";
 export { vendorRoutes } from "@/http/routes/vendors";
 export { mileageRoutes } from "@/http/routes/mileage";
 export { billRoutes } from "@/http/routes/bills";
+export { receiptRoutes } from "@/http/routes/receipts";
