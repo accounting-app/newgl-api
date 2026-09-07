@@ -16,3 +16,5 @@ export { vendorRoutes } from "@/http/routes/vendors";
 export { mileageRoutes } from "@/http/routes/mileage";
 export { billRoutes } from "@/http/routes/bills";
 export { receiptRoutes } from "@/http/routes/receipts";
+export { customerRoutes } from "@/http/routes/customers";
+export { productServiceRoutes } from "@/http/routes/products-services";

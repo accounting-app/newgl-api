@@ -33,8 +33,21 @@ const vendorWritableFields = {
 };
 
 const createVendorInputSchema = zod.object(vendorWritableFields);
+// Every field explicit and optional -- NOT a spread over
+// Object.entries(vendorWritableFields) mapped to .optional(): that loses
+// the literal key names to TS (Object.entries widens keys to `string`),
+// so the inferred type collapses to just `{ status?: ... }` and every
+// other field access below fails to typecheck, even though it works fine
+// at runtime (zod itself doesn't care how the shape object was built).
 const updateVendorInputSchema = zod.object({
-  ...Object.fromEntries(Object.entries(vendorWritableFields).map(([key, schema]) => [key, schema.optional()])),
+  name: vendorWritableFields.name.optional(),
+  companyName: vendorWritableFields.companyName,
+  email: vendorWritableFields.email,
+  phone: vendorWritableFields.phone,
+  address: vendorWritableFields.address,
+  taxId: vendorWritableFields.taxId,
+  defaultExpenseAccountId: vendorWritableFields.defaultExpenseAccountId,
+  is1099Contractor: vendorWritableFields.is1099Contractor,
   status: zod.enum(["ACTIVE", "ARCHIVED"]).optional()
 });
 
