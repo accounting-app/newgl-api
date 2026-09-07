@@ -18,3 +18,4 @@ export { billRoutes } from "@/http/routes/bills";
 export { receiptRoutes } from "@/http/routes/receipts";
 export { customerRoutes } from "@/http/routes/customers";
 export { productServiceRoutes } from "@/http/routes/products-services";
+export { invoiceRoutes } from "@/http/routes/invoices";
