@@ -105,7 +105,8 @@ const deleteVendorRoute = createRoute({
   request: { params: vendorIdParam },
   responses: {
     204: { description: "Vendor deleted" },
-    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such vendor for this company" }
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such vendor for this company" },
+    409: { content: { "application/json": { schema: errorResponseSchema } }, description: "This vendor has bills against it -- archive it instead of deleting" }
   }
 });
 
@@ -221,12 +222,23 @@ export function vendorRoutes(app: OpenAPIHono): void {
     const { vendorId } = context.req.valid("param");
     const sql = getSql();
 
-    const rows = await sql`
-      delete from vendors v
-      using ledgers l
-      where v.ledger_id = l.id and l.tenant_id = ${tenantId} and v.id = ${vendorId}
-      returning v.id
-    `;
+    let rows: unknown[];
+    try {
+      rows = await sql`
+        delete from vendors v
+        using ledgers l
+        where v.ledger_id = l.id and l.tenant_id = ${tenantId} and v.id = ${vendorId}
+        returning v.id
+      `;
+    } catch (error) {
+      // Postgres foreign_key_violation -- this vendor has bills against it
+      // (bills.vendor_id has no cascade, on purpose: see
+      // 20260907020000_create_bills.sql). Archive instead of delete.
+      if (error instanceof Error && "errno" in error && (error as { errno?: string }).errno === "23503") {
+        return context.json({ error: "This vendor has bills against it -- archive it instead of deleting" }, 409);
+      }
+      throw error;
+    }
     if (rows.length === 0) {
       return context.json({ error: `No vendor '${vendorId}' for this company` }, 404);
     }
