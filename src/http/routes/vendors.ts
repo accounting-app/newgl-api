@@ -17,6 +17,7 @@ const vendorSchema = zod.object({
   taxId: zod.string().optional(),
   defaultExpenseAccountId: zod.string().optional(),
   is1099Contractor: zod.boolean(),
+  w9Received: zod.boolean(),
   status: zod.enum(["ACTIVE", "ARCHIVED"]),
   createdAt: zod.string()
 });
@@ -29,7 +30,8 @@ const vendorWritableFields = {
   address: zod.string().trim().min(1).max(500).optional(),
   taxId: zod.string().trim().min(1).max(50).optional(),
   defaultExpenseAccountId: zod.string().trim().min(1).optional(),
-  is1099Contractor: zod.boolean().optional()
+  is1099Contractor: zod.boolean().optional(),
+  w9Received: zod.boolean().optional()
 };
 
 const createVendorInputSchema = zod.object(vendorWritableFields);
@@ -48,6 +50,7 @@ const updateVendorInputSchema = zod.object({
   taxId: vendorWritableFields.taxId,
   defaultExpenseAccountId: vendorWritableFields.defaultExpenseAccountId,
   is1099Contractor: vendorWritableFields.is1099Contractor,
+  w9Received: vendorWritableFields.w9Received,
   status: zod.enum(["ACTIVE", "ARCHIVED"]).optional()
 });
 
@@ -61,6 +64,7 @@ type VendorRow = {
   tax_id: string | null;
   default_expense_account_id: string | null;
   is_1099_contractor: boolean;
+  w9_received: boolean;
   status: "ACTIVE" | "ARCHIVED";
   created_at: Date;
 };
@@ -76,6 +80,7 @@ function serialize(row: VendorRow) {
     taxId: row.tax_id ?? undefined,
     defaultExpenseAccountId: row.default_expense_account_id ?? undefined,
     is1099Contractor: row.is_1099_contractor,
+    w9Received: row.w9_received,
     status: row.status,
     createdAt: row.created_at.toISOString()
   };
@@ -137,7 +142,7 @@ export function vendorRoutes(app: OpenAPIHono): void {
 
     const rows = await sql`
       select v.id, v.name, v.company_name, v.email, v.phone, v.address, v.tax_id,
-             v.default_expense_account_id, v.is_1099_contractor, v.status, v.created_at
+             v.default_expense_account_id, v.is_1099_contractor, v.w9_received, v.status, v.created_at
       from vendors v
       join ledgers l on l.id = v.ledger_id
       where l.tenant_id = ${tenantId} and l.name = ${ledgerName}
@@ -164,15 +169,15 @@ export function vendorRoutes(app: OpenAPIHono): void {
     const [inserted] = await sql`
       insert into vendors (
         ledger_id, name, company_name, email, phone, address, tax_id,
-        default_expense_account_id, is_1099_contractor
+        default_expense_account_id, is_1099_contractor, w9_received
       )
       values (
         ${ledgerId}, ${input.name}, ${input.companyName ?? null}, ${input.email ?? null},
         ${input.phone ?? null}, ${input.address ?? null}, ${input.taxId ?? null},
-        ${input.defaultExpenseAccountId ?? null}, ${input.is1099Contractor ?? false}
+        ${input.defaultExpenseAccountId ?? null}, ${input.is1099Contractor ?? false}, ${input.w9Received ?? false}
       )
       returning id, name, company_name, email, phone, address, tax_id,
-                default_expense_account_id, is_1099_contractor, status, created_at
+                default_expense_account_id, is_1099_contractor, w9_received, status, created_at
     `;
 
     return context.json(serialize(inserted as VendorRow), 200);
@@ -186,7 +191,7 @@ export function vendorRoutes(app: OpenAPIHono): void {
 
     const existingRows = await sql`
       select v.id, v.name, v.company_name, v.email, v.phone, v.address, v.tax_id,
-             v.default_expense_account_id, v.is_1099_contractor, v.status
+             v.default_expense_account_id, v.is_1099_contractor, v.w9_received, v.status
       from vendors v
       join ledgers l on l.id = v.ledger_id
       where l.tenant_id = ${tenantId} and v.id = ${vendorId}
@@ -207,6 +212,7 @@ export function vendorRoutes(app: OpenAPIHono): void {
       defaultExpenseAccountId:
         patch.defaultExpenseAccountId !== undefined ? patch.defaultExpenseAccountId : (current.default_expense_account_id ?? undefined),
       is1099Contractor: patch.is1099Contractor ?? current.is_1099_contractor,
+      w9Received: patch.w9Received ?? current.w9_received,
       status: patch.status ?? current.status
     };
 
@@ -220,11 +226,12 @@ export function vendorRoutes(app: OpenAPIHono): void {
         tax_id = ${next.taxId ?? null},
         default_expense_account_id = ${next.defaultExpenseAccountId ?? null},
         is_1099_contractor = ${next.is1099Contractor},
+        w9_received = ${next.w9Received},
         status = ${next.status},
         updated_at = now()
       where id = ${vendorId}
       returning id, name, company_name, email, phone, address, tax_id,
-                default_expense_account_id, is_1099_contractor, status, created_at
+                default_expense_account_id, is_1099_contractor, w9_received, status, created_at
     `;
 
     return context.json(serialize(updated as VendorRow), 200);

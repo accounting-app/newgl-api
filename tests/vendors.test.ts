@@ -127,6 +127,29 @@ describe("Vendor routes (directory scoped to the active company)", () => {
     expect(patched.phone).toBe("555-0100");
   });
 
+  test("w9Received defaults to false and can be toggled independently of other fields", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("w9");
+
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Contractor With No W-9 Yet", is1099Contractor: true })
+      })
+    ).json()) as { id: string; w9Received: boolean };
+    expect(created.w9Received).toBe(false);
+
+    const patchRes = await app.request(`/api/vendors/${created.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ w9Received: true })
+    });
+    const patched = (await patchRes.json()) as { w9Received: boolean; is1099Contractor: boolean };
+    expect(patched.w9Received).toBe(true);
+    expect(patched.is1099Contractor).toBe(true);
+  });
+
   test("PATCH can archive a vendor", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("archive");
