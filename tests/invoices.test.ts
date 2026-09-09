@@ -47,6 +47,11 @@ describe("Invoice routes (metadata + real ledger postings, scoped to the active 
     return accounts.find((a) => a.category === category);
   }
 
+  async function findAccountByName(headers: HeadersInit, category: string, name: string): Promise<{ id: string; name: string } | undefined> {
+    const accounts = (await (await app.request("/api/accounts", { headers })).json()) as Array<{ id: string; name: string; category: string }>;
+    return accounts.find((a) => a.category === category && a.name === name);
+  }
+
   beforeAll(async () => {
     reachable = await localSupabaseStackIsReachable();
     if (!reachable) {
@@ -97,13 +102,14 @@ describe("Invoice routes (metadata + real ledger postings, scoped to the active 
     const arAccount = await findAccount(headers, "ACCOUNTS_RECEIVABLE");
     expect(arAccount).toBeDefined();
     expect(arAccount!.name).toBe("Accounts Receivable");
-    // The bootstrap tenant's seed ledger already has an INCOME account
-    // (see data/company.bean) -- find-or-create picks that existing one up
-    // rather than creating a redundant "Sales Income", same "find before
-    // create" behavior as Accounts Payable/Receivable. The dedicated
-    // create-a-new-one path is covered by the "no income account exists
-    // yet" case below (a fresh, no-template company).
-    const incomeAccount = await findAccount(headers, "INCOME");
+    // The bootstrap tenant's seed ledger already has several INCOME
+    // accounts (see data/company.bean), but none of them is literally named
+    // "Sales Income" -- find-or-create must match on name, not just
+    // category, or it'd silently post revenue to an unrelated existing
+    // income account (e.g. "Billable Expense Income"). So this still
+    // creates a new "Sales Income" account, same as the fresh, no-template
+    // company case below.
+    const incomeAccount = await findAccountByName(headers, "INCOME", "Sales Income");
     expect(incomeAccount).toBeDefined();
 
     const txn = (await (await app.request(`/api/transactions/${created.postedTransactionId}`, { headers })).json()) as {

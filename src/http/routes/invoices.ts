@@ -93,7 +93,13 @@ async function findOrCreateAccountByCategory(
   code: string
 ): Promise<string> {
   const accounts = await accountService.listAccounts();
-  const existing = accounts.find((account) => account.category === category);
+  // Match by name, not just category: ACCOUNTS_RECEIVABLE is a safe
+  // category-only match (a company has at most one), but INCOME is not --
+  // a real chart of accounts has many income accounts (Sales of Product
+  // Income, Services, Billable Expense Income, ...), so matching "any
+  // INCOME-category account" would silently post revenue to whichever one
+  // happens to be first, instead of this specific "Sales Income" default.
+  const existing = accounts.find((account) => account.category === category && account.name === name);
   if (existing) return existing.id;
 
   let nextCode = code;
