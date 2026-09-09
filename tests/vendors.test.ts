@@ -1,0 +1,268 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+
+import { createApp } from "../src/http/app";
+import { getSql } from "../src/infra/postgres/client";
+import {
+  createConfirmedUser,
+  deleteUser,
+  localSupabaseStackIsReachable,
+  SUPABASE_URL,
+  type TestUser
+} from "./helpers/supabase-test-auth";
+
+/**
+ * Integration tests for the vendor directory (Expenses & Bills ▸ Vendors,
+ * and the source of truth for Team ▸ Contractors / Expenses & Bills ▸
+ * 1099s via is1099Contractor). Scoped to the caller's CURRENTLY ACTIVE
+ * company only, same rule as ledger-files.ts -- see that test file's own
+ * scoping test for the pattern this mirrors.
+ *
+ * Requires a local Supabase stack (`bunx supabase start`); skips with a
+ * warning instead of failing if it isn't reachable.
+ */
+describe("Vendor routes (directory scoped to the active company)", () => {
+  let app: ReturnType<typeof createApp>;
+  let reachable = false;
+  const createdUserIds: string[] = [];
+  const createdTenantIds: string[] = [];
+
+  async function bootstrapUser(prefix: string): Promise<{ user: TestUser; headers: HeadersInit; tenantId: string }> {
+    const user = await createConfirmedUser(`${prefix}-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const headers = { Authorization: `Bearer ${user.accessToken}` };
+    const res = await app.request("/api/tenants/bootstrap", { method: "POST", headers });
+    const body = (await res.json()) as { id: string };
+    createdTenantIds.push(body.id);
+    return { user, headers, tenantId: body.id };
+  }
+
+  beforeAll(async () => {
+    reachable = await localSupabaseStackIsReachable();
+    if (!reachable) {
+      console.warn(
+        "Local Supabase/Postgres not reachable at " + SUPABASE_URL + " -- skipping vendors integration tests. Run `bunx supabase start` to enable them."
+      );
+      return;
+    }
+    app = createApp();
+  });
+
+  afterAll(async () => {
+    if (!reachable) return;
+    for (const tenantId of createdTenantIds) {
+      await getSql()`delete from tenants where id = ${tenantId}`.catch(() => {});
+    }
+    for (const userId of createdUserIds) {
+      await deleteUser(userId);
+    }
+  });
+
+  test("list is empty for a fresh company", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("empty");
+
+    const res = await app.request("/api/vendors", { headers });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  test("create adds a vendor to the active company's list", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("create");
+
+    const createRes = await app.request("/api/vendors", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Acme Office Supply", companyName: "Acme Office Supply LLC", is1099Contractor: true })
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { id: string; name: string; companyName?: string; is1099Contractor: boolean; status: string };
+    expect(created.name).toBe("Acme Office Supply");
+    expect(created.companyName).toBe("Acme Office Supply LLC");
+    expect(created.is1099Contractor).toBe(true);
+    expect(created.status).toBe("ACTIVE");
+
+    const listRes = await app.request("/api/vendors", { headers });
+    const list = (await listRes.json()) as Array<{ name: string }>;
+    expect(list.map((v) => v.name)).toEqual(["Acme Office Supply"]);
+  });
+
+  test("create requires only a name", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("minimal");
+
+    const res = await app.request("/api/vendors", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Just A Name" })
+    });
+    expect(res.status).toBe(200);
+    const created = (await res.json()) as { name: string; is1099Contractor: boolean; email?: string };
+    expect(created.name).toBe("Just A Name");
+    expect(created.is1099Contractor).toBe(false);
+    expect(created.email).toBeUndefined();
+  });
+
+  test("PATCH updates a subset of fields, leaving others untouched", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("patch");
+
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Original Name", email: "original@example.com" })
+      })
+    ).json()) as { id: string };
+
+    const patchRes = await app.request(`/api/vendors/${created.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: "555-0100" })
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { name: string; email?: string; phone?: string };
+    expect(patched.name).toBe("Original Name");
+    expect(patched.email).toBe("original@example.com");
+    expect(patched.phone).toBe("555-0100");
+  });
+
+  test("w9Received defaults to false and can be toggled independently of other fields", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("w9");
+
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Contractor With No W-9 Yet", is1099Contractor: true })
+      })
+    ).json()) as { id: string; w9Received: boolean };
+    expect(created.w9Received).toBe(false);
+
+    const patchRes = await app.request(`/api/vendors/${created.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ w9Received: true })
+    });
+    const patched = (await patchRes.json()) as { w9Received: boolean; is1099Contractor: boolean };
+    expect(patched.w9Received).toBe(true);
+    expect(patched.is1099Contractor).toBe(true);
+  });
+
+  test("PATCH can archive a vendor", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("archive");
+
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Retiring Vendor" })
+      })
+    ).json()) as { id: string };
+
+    const patchRes = await app.request(`/api/vendors/${created.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ARCHIVED" })
+    });
+    expect(patchRes.status).toBe(200);
+    expect(((await patchRes.json()) as { status: string }).status).toBe("ARCHIVED");
+  });
+
+  test("DELETE removes a vendor", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("delete");
+
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Disposable Vendor" })
+      })
+    ).json()) as { id: string };
+
+    const deleteRes = await app.request(`/api/vendors/${created.id}`, { method: "DELETE", headers });
+    expect(deleteRes.status).toBe(204);
+
+    const list = (await (await app.request("/api/vendors", { headers })).json()) as unknown[];
+    expect(list).toEqual([]);
+  });
+
+  test("operations on an unknown vendorId return 404", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("unknown-id");
+    const fakeId = crypto.randomUUID();
+
+    expect(
+      (
+        await app.request(`/api/vendors/${fakeId}`, {
+          method: "PATCH",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: "x" })
+        })
+      ).status
+    ).toBe(404);
+    expect((await app.request(`/api/vendors/${fakeId}`, { method: "DELETE", headers })).status).toBe(404);
+  });
+
+  test("list only shows the currently active company's vendors, not other companies'", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("scoping");
+
+    await app.request("/api/vendors", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Primary Co Vendor" })
+    });
+
+    await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Second Co" })
+    });
+    await app.request("/api/companies/Second%20Co/switch", { method: "POST", headers });
+    await app.request("/api/vendors", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Second Co Vendor" })
+    });
+
+    const secondCoList = (await (await app.request("/api/vendors", { headers })).json()) as Array<{ name: string }>;
+    expect(secondCoList.map((v) => v.name)).toEqual(["Second Co Vendor"]);
+
+    await app.request("/api/companies/company/switch", { method: "POST", headers });
+    const primaryList = (await (await app.request("/api/vendors", { headers })).json()) as Array<{ name: string }>;
+    expect(primaryList.map((v) => v.name)).toEqual(["Primary Co Vendor"]);
+  });
+
+  test("deleting a company cascades to its vendors", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("cascade");
+
+    await app.request("/api/companies", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Disposable Co" })
+    });
+    await app.request("/api/companies/Disposable%20Co/switch", { method: "POST", headers });
+    const created = (await (
+      await app.request("/api/vendors", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Doomed Vendor" })
+      })
+    ).json()) as { id: string };
+
+    await app.request("/api/companies/company/switch", { method: "POST", headers });
+    await app.request("/api/companies/Disposable%20Co", { method: "DELETE", headers });
+
+    const res = await app.request(`/api/vendors/${created.id}`, {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "should 404" })
+    });
+    expect(res.status).toBe(404);
+  });
+});

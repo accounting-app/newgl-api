@@ -26,6 +26,10 @@ export const LEDGER_FILE = process.env.LEDGER_FILE || "data/company.bean";
 export const LEDGER_NAME = process.env.LEDGER_NAME || "company";
 export const DATABASE_URL = process.env.DATABASE_URL;
 export const SUPABASE_URL = process.env.SUPABASE_URL;
+// Service-role key for calling Supabase's own REST APIs directly (Storage,
+// Admin) via plain fetch -- same key tests/helpers/supabase-test-auth.ts
+// already uses for the Auth admin API. Never exposed to the browser.
+export const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 // newgl-ai (Phase 3+): internal-only service, reachable at NEWGL_AI_URL,
 // authenticated with the shared INTERNAL_SERVICE_TOKEN header. Never exposed
 // to the browser -- see AI_INTEGRATION_PLAN.md Part 1.

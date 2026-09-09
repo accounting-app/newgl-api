@@ -20,7 +20,16 @@ import {
   companyRoutes,
   bankRuleRoutes,
   excludedFeedRowRoutes,
-  ledgerFileRoutes
+  ledgerFileRoutes,
+  vendorRoutes,
+  mileageRoutes,
+  billRoutes,
+  receiptRoutes,
+  customerRoutes,
+  productServiceRoutes,
+  invoiceRoutes,
+  estimateRoutes,
+  employeeRoutes
 } from "@/http/routes";
 
 // `defaultServices` is a test-mode escape hatch: existing tests and scripts
@@ -61,5 +70,14 @@ export function createApp(defaultServices?: ServiceContainer) {
   bankRuleRoutes(app);
   excludedFeedRowRoutes(app);
   ledgerFileRoutes(app);
+  vendorRoutes(app);
+  mileageRoutes(app);
+  billRoutes(app);
+  receiptRoutes(app);
+  customerRoutes(app);
+  productServiceRoutes(app);
+  invoiceRoutes(app);
+  estimateRoutes(app);
+  employeeRoutes(app);
   return app;
 }
