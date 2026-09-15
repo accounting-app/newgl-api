@@ -28,12 +28,54 @@ const tenantSchema = zod.object({
   id: zod.string().uuid(),
   name: zod.string(),
   planId: zod.string(),
-  aiEnabled: zod.boolean()
+  aiEnabled: zod.boolean(),
+  industry: zod.string().nullable(),
+  companySize: zod.string().nullable(),
+  country: zod.string().nullable(),
+  baseCurrency: zod.string(),
+  // null until the onboarding wizard (issue #29) has been completed once --
+  // the frontend's single source of truth for whether to redirect a
+  // signed-in user into /onboarding before anything else.
+  onboardingCompletedAt: zod.string().nullable()
 });
 
 const setAiEnabledInputSchema = zod.object({
   aiEnabled: zod.boolean()
 });
+
+const completeOnboardingInputSchema = zod.object({
+  companyName: zod.string().min(1),
+  industry: zod.string().min(1).nullable(),
+  companySize: zod.string().min(1).nullable(),
+  country: zod.string().min(1).nullable(),
+  baseCurrency: zod.string().min(1)
+});
+
+type TenantRow = {
+  id: string;
+  name: string;
+  plan_id: string;
+  ai_enabled: boolean;
+  industry: string | null;
+  company_size: string | null;
+  country: string | null;
+  base_currency: string;
+  onboarding_completed_at: string | Date | null;
+};
+
+function toTenantResponse(row: TenantRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    planId: row.plan_id,
+    aiEnabled: row.ai_enabled,
+    industry: row.industry,
+    companySize: row.company_size,
+    country: row.country,
+    baseCurrency: row.base_currency,
+    onboardingCompletedAt: row.onboarding_completed_at ? new Date(row.onboarding_completed_at).toISOString() : null
+  };
+}
 
 const bootstrapRoute = createRoute({
   method: "post",
@@ -75,6 +117,20 @@ const setAiEnabledRoute = createRoute({
   }
 });
 
+const completeOnboardingRoute = createRoute({
+  method: "patch",
+  path: "/api/tenants/onboarding",
+  request: {
+    body: { content: { "application/json": { schema: completeOnboardingInputSchema } }, required: true }
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: tenantSchema } },
+      description: "The tenant with onboarding fields saved and onboardingCompletedAt set"
+    }
+  }
+});
+
 /**
  * Idempotent: safe to call on every login, not just the first one. If the
  * user already has a membership, returns their existing tenant untouched. If
@@ -89,15 +145,15 @@ export function tenantRoutes(app: OpenAPIHono): void {
     const sql = getSql();
 
     const existing = await sql`
-      select t.id, t.name, t.plan_id, t.ai_enabled
+      select t.id, t.name, t.plan_id, t.ai_enabled, t.industry, t.company_size, t.country,
+             t.base_currency, t.onboarding_completed_at
       from memberships m
       join tenants t on t.id = m.tenant_id
       where m.user_id = ${userId}
       limit 1
     `;
     if (existing.length > 0) {
-      const row = existing[0] as { id: string; name: string; plan_id: string; ai_enabled: boolean };
-      return context.json({ id: row.id, name: row.name, planId: row.plan_id, aiEnabled: row.ai_enabled }, 200);
+      return context.json(toTenantResponse(existing[0] as TenantRow), 200);
     }
 
     const email = getUserEmail(context);
@@ -109,7 +165,7 @@ export function tenantRoutes(app: OpenAPIHono): void {
       const [createdTenant] = await tx`
         insert into tenants (name, plan_id)
         values (${tenantName}, 'free')
-        returning id, name, plan_id, ai_enabled
+        returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
       `;
 
       await tx`
@@ -128,13 +184,10 @@ export function tenantRoutes(app: OpenAPIHono): void {
         values (${ledger.id}, 1, ${content}, ${hash}, 'bootstrap')
       `;
 
-      return createdTenant as { id: string; name: string; plan_id: string; ai_enabled: boolean };
+      return createdTenant as TenantRow;
     });
 
-    return context.json(
-      { id: tenant.id, name: tenant.name, planId: tenant.plan_id, aiEnabled: tenant.ai_enabled },
-      200
-    );
+    return context.json(toTenantResponse(tenant), 200);
   });
 
   // Unlike bootstrap, this goes through the normal tenantContext middleware
@@ -146,13 +199,13 @@ export function tenantRoutes(app: OpenAPIHono): void {
     const sql = getSql();
 
     const rows = await sql`
-      select id, name, plan_id, ai_enabled from tenants where id = ${tenantId} limit 1
+      select id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
+      from tenants where id = ${tenantId} limit 1
     `;
     if (rows.length === 0) {
       return context.json({ error: "No tenant found for this session" }, 404);
     }
-    const row = rows[0] as { id: string; name: string; plan_id: string; ai_enabled: boolean };
-    return context.json({ id: row.id, name: row.name, planId: row.plan_id, aiEnabled: row.ai_enabled }, 200);
+    return context.json(toTenantResponse(rows[0] as TenantRow), 200);
   });
 
   app.openapi(setAiEnabledRoute, async (context) => {
@@ -162,12 +215,33 @@ export function tenantRoutes(app: OpenAPIHono): void {
 
     const [row] = await sql`
       update tenants set ai_enabled = ${aiEnabled} where id = ${tenantId}
-      returning id, name, plan_id, ai_enabled
+      returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
     `;
-    const typedRow = row as { id: string; name: string; plan_id: string; ai_enabled: boolean };
-    return context.json(
-      { id: typedRow.id, name: typedRow.name, planId: typedRow.plan_id, aiEnabled: typedRow.ai_enabled },
-      200
-    );
+    return context.json(toTenantResponse(row as TenantRow), 200);
+  });
+
+  // The onboarding wizard's final "Finish" step -- always a full submit of
+  // every field on that step, not a partial patch, so a plain UPDATE (same
+  // idiom as vendors.ts/bills.ts) is enough; no COALESCE-style optional-field
+  // handling needed. Setting onboarding_completed_at here is what flips
+  // TenantProvider's gate off for this tenant from now on.
+  app.openapi(completeOnboardingRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const { companyName, industry, companySize, country, baseCurrency } = context.req.valid("json");
+    const sql = getSql();
+
+    const [row] = await sql`
+      update tenants set
+        name = ${companyName},
+        industry = ${industry},
+        company_size = ${companySize},
+        country = ${country},
+        base_currency = ${baseCurrency},
+        onboarding_completed_at = now(),
+        updated_at = now()
+      where id = ${tenantId}
+      returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
+    `;
+    return context.json(toTenantResponse(row as TenantRow), 200);
   });
 }

@@ -182,6 +182,49 @@ describe("Phase 1: auth + tenancy", () => {
     expect(afterBody.planId).toBe("free");
   });
 
+  test("PATCH /api/tenants/onboarding saves company fields and sets onboardingCompletedAt", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`onboarding-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}`, "Content-Type": "application/json" };
+
+    const bootstrap = await app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders });
+    const bootstrapBody = (await bootstrap.json()) as { id: string; onboardingCompletedAt: string | null };
+    createdTenantIds.push(bootstrapBody.id);
+    expect(bootstrapBody.onboardingCompletedAt).toBeNull();
+
+    const patch = await app.request("/api/tenants/onboarding", {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify({
+        companyName: "Acme Consulting",
+        industry: "Professional services",
+        companySize: "Just me",
+        country: "US",
+        baseCurrency: "USD"
+      })
+    });
+    expect(patch.status).toBe(200);
+    const patchBody = (await patch.json()) as {
+      name: string;
+      industry: string | null;
+      companySize: string | null;
+      country: string | null;
+      baseCurrency: string;
+      onboardingCompletedAt: string | null;
+    };
+    expect(patchBody.name).toBe("Acme Consulting");
+    expect(patchBody.industry).toBe("Professional services");
+    expect(patchBody.companySize).toBe("Just me");
+    expect(patchBody.country).toBe("US");
+    expect(patchBody.baseCurrency).toBe("USD");
+    expect(patchBody.onboardingCompletedAt).not.toBeNull();
+
+    const after = await app.request("/api/tenants/me", { headers: authHeaders });
+    const afterBody = (await after.json()) as { onboardingCompletedAt: string | null };
+    expect(afterBody.onboardingCompletedAt).not.toBeNull();
+  });
+
   test("two tenants never see each other's ledger data", async () => {
     if (!reachable) return;
     const userA = await createConfirmedUser(`tenant-a-${crypto.randomUUID()}@example.com`, "password123!");
