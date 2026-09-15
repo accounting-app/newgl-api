@@ -109,6 +109,34 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.status).toBe(200);
   });
 
+  test("two concurrent bootstrap calls for a brand-new user resolve to one tenant, not two", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`race-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}` };
+
+    // Both requests race past the "no existing membership" check before
+    // either has inserted -- exactly what React Strict Mode's
+    // double-invoked effects (two TenantProvider mounts during the
+    // onboarding -> dashboard redirect, in particular) produce in
+    // practice. Without memberships_one_per_user (see the migration and
+    // tenants.ts's bootstrap handler) this would create two unrelated
+    // tenants for the same user.
+    const [first, second] = await Promise.all([
+      app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders }),
+      app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders })
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const firstBody = (await first.json()) as { id: string };
+    const secondBody = (await second.json()) as { id: string };
+    createdTenantIds.push(firstBody.id, secondBody.id);
+    expect(firstBody.id).toBe(secondBody.id);
+
+    const rows = await getSql()`select count(*)::int as count from memberships where user_id = ${user.id}`;
+    expect((rows[0] as { count: number }).count).toBe(1);
+  });
+
   test("bootstrap seeds a real starter chart of accounts and sample transactions", async () => {
     if (!reachable) return;
     const user = await createConfirmedUser(`seed-${crypto.randomUUID()}@example.com`, "password123!");

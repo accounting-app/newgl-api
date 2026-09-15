@@ -161,33 +161,65 @@ export function tenantRoutes(app: OpenAPIHono): void {
     const content = serializeBeancount(await buildBootstrapDocument(tenantName));
     const hash = await sha256(content);
 
-    const tenant = await sql.begin(async (tx) => {
-      const [createdTenant] = await tx`
-        insert into tenants (name, plan_id)
-        values (${tenantName}, 'free')
-        returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
+    try {
+      const tenant = await sql.begin(async (tx) => {
+        const [createdTenant] = await tx`
+          insert into tenants (name, plan_id)
+          values (${tenantName}, 'free')
+          returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
+        `;
+
+        // `memberships_one_per_user` (unique on user_id) is what actually
+        // closes the race below -- two concurrent bootstrap calls (React
+        // Strict Mode double-invoking effects in dev is enough to trigger
+        // this, e.g. two TenantProvider mounts during the onboarding ->
+        // dashboard redirect) both pass the "existing.length > 0" check
+        // above before either has inserted, so without a DB-level
+        // constraint both would happily create their own tenant + ledger
+        // and leave one user with two unrelated companies.
+        await tx`
+          insert into memberships (user_id, tenant_id, role)
+          values (${userId}, ${createdTenant.id}, 'owner')
+        `;
+
+        const [ledger] = await tx`
+          insert into ledgers (tenant_id, name, is_primary, content, content_hash, version)
+          values (${createdTenant.id}, ${LEDGER_NAME}, true, ${content}, ${hash}, 1)
+          returning id
+        `;
+
+        await tx`
+          insert into ledger_versions (ledger_id, version, content, content_hash, source)
+          values (${ledger.id}, 1, ${content}, ${hash}, 'bootstrap')
+        `;
+
+        return createdTenant as TenantRow;
+      });
+
+      return context.json(toTenantResponse(tenant), 200);
+    } catch (err) {
+      // Lost the race: another concurrent bootstrap call already won and
+      // committed a membership for this user (memberships_one_per_user
+      // violation, Postgres error code 23505) -- this call's own tenant +
+      // ledger insert was rolled back with the transaction, so there's
+      // nothing to clean up. Return the winner's tenant instead of a 500.
+      const lostRace =
+        typeof err === "object" &&
+        err !== null &&
+        "constraint" in err &&
+        err.constraint === "memberships_one_per_user";
+      if (!lostRace) throw err;
+
+      const rows = await sql`
+        select t.id, t.name, t.plan_id, t.ai_enabled, t.industry, t.company_size, t.country,
+               t.base_currency, t.onboarding_completed_at
+        from memberships m
+        join tenants t on t.id = m.tenant_id
+        where m.user_id = ${userId}
+        limit 1
       `;
-
-      await tx`
-        insert into memberships (user_id, tenant_id, role)
-        values (${userId}, ${createdTenant.id}, 'owner')
-      `;
-
-      const [ledger] = await tx`
-        insert into ledgers (tenant_id, name, is_primary, content, content_hash, version)
-        values (${createdTenant.id}, ${LEDGER_NAME}, true, ${content}, ${hash}, 1)
-        returning id
-      `;
-
-      await tx`
-        insert into ledger_versions (ledger_id, version, content, content_hash, source)
-        values (${ledger.id}, 1, ${content}, ${hash}, 'bootstrap')
-      `;
-
-      return createdTenant as TenantRow;
-    });
-
-    return context.json(toTenantResponse(tenant), 200);
+      return context.json(toTenantResponse(rows[0] as TenantRow), 200);
+    }
   });
 
   // Unlike bootstrap, this goes through the normal tenantContext middleware
