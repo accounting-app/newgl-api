@@ -1,0 +1,14 @@
+-- This app is single-tenant-per-user (every other design decision already
+-- assumes it -- e.g. Organization settings: "each organization has a single
+-- member for now"), but the only uniqueness constraint on `memberships` was
+-- (user_id, tenant_id), which does nothing to stop a user ending up with
+-- TWO memberships to TWO DIFFERENT tenants. That's exactly what a race in
+-- POST /api/tenants/bootstrap's check-then-insert can produce: two
+-- concurrent calls (React Strict Mode double-invoking effects in dev is
+-- enough to trigger this in practice, e.g. two TenantProvider mounts during
+-- the onboarding -> dashboard redirect) both see "no membership yet" and
+-- both insert a brand-new tenant + membership. Enforcing one membership per
+-- user at the database level is what actually closes the race -- the
+-- application-level fix (see tenants.ts) then reacts to the resulting
+-- unique-violation instead of racing to begin with.
+alter table memberships add constraint memberships_one_per_user unique (user_id);

@@ -109,6 +109,34 @@ describe("Phase 1: auth + tenancy", () => {
     expect(accounts.status).toBe(200);
   });
 
+  test("two concurrent bootstrap calls for a brand-new user resolve to one tenant, not two", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`race-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}` };
+
+    // Both requests race past the "no existing membership" check before
+    // either has inserted -- exactly what React Strict Mode's
+    // double-invoked effects (two TenantProvider mounts during the
+    // onboarding -> dashboard redirect, in particular) produce in
+    // practice. Without memberships_one_per_user (see the migration and
+    // tenants.ts's bootstrap handler) this would create two unrelated
+    // tenants for the same user.
+    const [first, second] = await Promise.all([
+      app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders }),
+      app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders })
+    ]);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    const firstBody = (await first.json()) as { id: string };
+    const secondBody = (await second.json()) as { id: string };
+    createdTenantIds.push(firstBody.id, secondBody.id);
+    expect(firstBody.id).toBe(secondBody.id);
+
+    const rows = await getSql()`select count(*)::int as count from memberships where user_id = ${user.id}`;
+    expect((rows[0] as { count: number }).count).toBe(1);
+  });
+
   test("bootstrap seeds a real starter chart of accounts and sample transactions", async () => {
     if (!reachable) return;
     const user = await createConfirmedUser(`seed-${crypto.randomUUID()}@example.com`, "password123!");
@@ -180,6 +208,49 @@ describe("Phase 1: auth + tenancy", () => {
     const afterBody = (await after.json()) as { id: string; planId: string };
     expect(afterBody.id).toBe(bootstrapBody.id);
     expect(afterBody.planId).toBe("free");
+  });
+
+  test("PATCH /api/tenants/onboarding saves company fields and sets onboardingCompletedAt", async () => {
+    if (!reachable) return;
+    const user = await createConfirmedUser(`onboarding-${crypto.randomUUID()}@example.com`, "password123!");
+    createdUserIds.push(user.id);
+    const authHeaders = { Authorization: `Bearer ${user.accessToken}`, "Content-Type": "application/json" };
+
+    const bootstrap = await app.request("/api/tenants/bootstrap", { method: "POST", headers: authHeaders });
+    const bootstrapBody = (await bootstrap.json()) as { id: string; onboardingCompletedAt: string | null };
+    createdTenantIds.push(bootstrapBody.id);
+    expect(bootstrapBody.onboardingCompletedAt).toBeNull();
+
+    const patch = await app.request("/api/tenants/onboarding", {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify({
+        companyName: "Acme Consulting",
+        industry: "Professional services",
+        companySize: "Just me",
+        country: "US",
+        baseCurrency: "USD"
+      })
+    });
+    expect(patch.status).toBe(200);
+    const patchBody = (await patch.json()) as {
+      name: string;
+      industry: string | null;
+      companySize: string | null;
+      country: string | null;
+      baseCurrency: string;
+      onboardingCompletedAt: string | null;
+    };
+    expect(patchBody.name).toBe("Acme Consulting");
+    expect(patchBody.industry).toBe("Professional services");
+    expect(patchBody.companySize).toBe("Just me");
+    expect(patchBody.country).toBe("US");
+    expect(patchBody.baseCurrency).toBe("USD");
+    expect(patchBody.onboardingCompletedAt).not.toBeNull();
+
+    const after = await app.request("/api/tenants/me", { headers: authHeaders });
+    const afterBody = (await after.json()) as { onboardingCompletedAt: string | null };
+    expect(afterBody.onboardingCompletedAt).not.toBeNull();
   });
 
   test("two tenants never see each other's ledger data", async () => {
