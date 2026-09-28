@@ -21,3 +21,4 @@ export { productServiceRoutes } from "@/http/routes/products-services";
 export { invoiceRoutes } from "@/http/routes/invoices";
 export { estimateRoutes } from "@/http/routes/estimates";
 export { employeeRoutes } from "@/http/routes/employees";
+export { reconciliationRoutes } from "@/http/routes/reconciliations";
