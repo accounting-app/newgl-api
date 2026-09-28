@@ -97,6 +97,43 @@ describe("Reconciliation routes", () => {
       })
     });
     expect(res.status).toBe(400);
+    const body = (await res.json()) as { difference: number };
+    expect(body.difference).toBeCloseTo(899, 2);
+  });
+
+  test("finish with discrepancyAdjustmentDate posts a balancing entry against Reconciliation Discrepancies and finishes anyway", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("discrepancy");
+    const bankAccount = await findAccount(headers, "BANK");
+    const incomeAccount = await findAccount(headers, "INCOME");
+    const transactionId = await depositToBank(headers, bankAccount.id, incomeAccount.id, 100, "2026-01-05");
+
+    // Statement says 900 but only a $100 deposit is checked -- QBO's "Hold
+    // on! Your difference isn't $0.00 yet" -> "Add adjustment and finish".
+    const finishRes = await app.request(`/api/accounts/${bankAccount.id}/reconciliations/finish`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        statementStartDate: "2026-01-01",
+        statementEndingDate: "2026-01-31",
+        statementEndingBalance: 900,
+        clearedTransactionIds: [transactionId],
+        discrepancyAdjustmentDate: "2026-01-31"
+      })
+    });
+    expect(finishRes.status).toBe(200);
+    const finished = (await finishRes.json()) as {
+      clearedBalance: number;
+      discrepancyAdjustmentAmount: number | null;
+      enteredCount: number;
+    };
+    expect(finished.clearedBalance).toBe(900);
+    expect(finished.discrepancyAdjustmentAmount).toBe(800);
+    // The deposit + the auto-created discrepancy adjustment transaction.
+    expect(finished.enteredCount).toBe(2);
+
+    const accounts = (await (await app.request("/api/accounts", { headers })).json()) as Array<{ name: string; category: string }>;
+    expect(accounts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Reconciliation Discrepancies", category: "OTHER_EXPENSE" })]));
   });
 
   test("finish succeeds when the balance matches, marks the entry reconciled, and shows up in history", async () => {
@@ -170,6 +207,46 @@ describe("Reconciliation routes", () => {
     expect(finished.serviceChargeAmount).toBe(15);
     // The deposit + the auto-created service-charge adjustment transaction.
     expect(finished.enteredCount).toBe(2);
+  });
+
+  test("detail reports uncleared total, register balance, cleared counts/totals, and reconciledBy", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("report-detail");
+    const bankAccount = await findAccount(headers, "BANK");
+    const incomeAccount = await findAccount(headers, "INCOME");
+    const clearedTransactionId = await depositToBank(headers, bankAccount.id, incomeAccount.id, 500, "2026-01-10");
+    // Left uncleared on purpose, dated within the same statement period.
+    await depositToBank(headers, bankAccount.id, incomeAccount.id, 100, "2026-01-15");
+
+    const finishRes = await app.request(`/api/accounts/${bankAccount.id}/reconciliations/finish`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        statementStartDate: "2026-01-01",
+        statementEndingDate: "2026-01-31",
+        statementEndingBalance: 500,
+        clearedTransactionIds: [clearedTransactionId]
+      })
+    });
+    expect(finishRes.status).toBe(200);
+    const finished = (await finishRes.json()) as { id: string; reconciledBy: string | null };
+    expect(finished.reconciledBy).toContain("report-detail-");
+
+    const detailRes = await app.request(`/api/reconciliations/${finished.id}`, { headers });
+    const detail = (await detailRes.json()) as {
+      paymentsCount: number;
+      paymentsTotal: number;
+      depositsCount: number;
+      depositsTotal: number;
+      unclearedTotal: number;
+      registerBalance: number;
+    };
+    expect(detail.paymentsCount).toBe(0);
+    expect(detail.paymentsTotal).toBe(0);
+    expect(detail.depositsCount).toBe(1);
+    expect(detail.depositsTotal).toBe(500);
+    expect(detail.unclearedTotal).toBe(100);
+    expect(detail.registerBalance).toBe(600);
   });
 
   test("finish rejects an unknown transaction id for this account", async () => {
