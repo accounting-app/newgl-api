@@ -57,6 +57,7 @@ const outOfBalanceResponseSchema = errorResponseSchema.extend({
 
 const reconciliationEntrySchema = zod.object({
   transactionId: zod.string(),
+  transactionType: zod.string().nullable(),
   date: zod.string().nullable(),
   refNumber: zod.string().nullable(),
   payee: zod.string().nullable(),
@@ -75,7 +76,11 @@ const reconciliationDetailSchema = reconciliationSchema.extend({
   depositsCount: zod.number(),
   depositsTotal: zod.number(),
   unclearedTotal: zod.number(),
-  registerBalance: zod.number()
+  registerBalance: zod.number(),
+  // QBO's report shows these under "Additional Information" (togglable via
+  // "Hide additional information") -- the entries dated on/before the
+  // statement date that never got cleared at all, not just their total.
+  unclearedEntries: zod.array(reconciliationEntrySchema)
 });
 
 type ReconciliationRow = {
@@ -439,17 +444,22 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     `;
     const transactionIds = new Set(entryRows.map((entryRow: unknown) => (entryRow as { transaction_id: string }).transaction_id));
 
+    function toEntry(entry: (typeof registerEntries)[number]) {
+      return {
+        transactionId: entry.transactionId,
+        transactionType: entry.transactionType ?? null,
+        date: entry.date ?? null,
+        refNumber: entry.refNumber ?? null,
+        payee: entry.payee ?? null,
+        memo: entry.memo ?? null,
+        payment: entry.payment ?? null,
+        deposit: entry.deposit ?? null
+      };
+    }
+
     const registerEntries = await registerService.listRegisterEntries(row.account_id);
     const clearedEntries = registerEntries.filter((entry) => transactionIds.has(entry.transactionId));
-    const entries = clearedEntries.map((entry) => ({
-      transactionId: entry.transactionId,
-      date: entry.date ?? null,
-      refNumber: entry.refNumber ?? null,
-      payee: entry.payee ?? null,
-      memo: entry.memo ?? null,
-      payment: entry.payment ?? null,
-      deposit: entry.deposit ?? null
-    }));
+    const entries = clearedEntries.map(toEntry);
 
     const paymentsCount = clearedEntries.filter((entry) => (entry.payment ?? 0) > 0).length;
     const paymentsTotal = clearedEntries.reduce((sum, entry) => sum + (entry.payment ?? 0), 0);
@@ -459,16 +469,17 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     // Register entries dated on/before the statement date that this
     // session's own statement_ending_date reflects, but were never
     // cleared/reconciled at all -- matches QBO's "Uncleared transactions
-    // as of [date]" line, and registerBalance is what the account's real
-    // running balance is once those are added back in.
+    // as of [date]" line (and its "Additional Information" listing), and
+    // registerBalance is what the account's real running balance is once
+    // those are added back in.
     const statementEndingDate = toDateOnly(row.statement_ending_date);
-    const unclearedTotal = registerEntries
-      .filter((entry) => entry.reconcileStatus === "" && entry.date <= statementEndingDate)
-      .reduce((sum, entry) => sum + (entry.deposit ?? 0) - (entry.payment ?? 0), 0);
+    const unclearedRegisterEntries = registerEntries.filter((entry) => entry.reconcileStatus === "" && entry.date <= statementEndingDate);
+    const unclearedTotal = unclearedRegisterEntries.reduce((sum, entry) => sum + (entry.deposit ?? 0) - (entry.payment ?? 0), 0);
+    const unclearedEntries = unclearedRegisterEntries.map(toEntry);
     const registerBalance = Number(row.statement_ending_balance) + unclearedTotal;
 
     return context.json(
-      { ...serialize(row), entries, paymentsCount, paymentsTotal, depositsCount, depositsTotal, unclearedTotal, registerBalance },
+      { ...serialize(row), entries, paymentsCount, paymentsTotal, depositsCount, depositsTotal, unclearedTotal, registerBalance, unclearedEntries },
       200
     );
   });
