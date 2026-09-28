@@ -267,6 +267,11 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
         type: "JOURNAL_ENTRY",
         transactionDate: input.serviceCharge.date,
         memo: "Service charge",
+        // reconcileStatus only ever lands on the register entry whose
+        // account matches sourceAccountId (see ledger-engine.ts's
+        // createRegisterEntries) -- omitting this silently left every
+        // adjustment transaction's own entry unreconciled.
+        sourceAccountId: accountId,
         reconcileStatus: "R",
         postings: [
           { accountId: input.serviceCharge.expenseAccountId, type: "DEBIT", amount: input.serviceCharge.amount },
@@ -282,6 +287,7 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
         type: "JOURNAL_ENTRY",
         transactionDate: input.interestEarned.date,
         memo: "Interest earned",
+        sourceAccountId: accountId,
         reconcileStatus: "R",
         postings: [
           { accountId, type: "DEBIT", amount: input.interestEarned.amount },
@@ -299,6 +305,7 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
         type: "JOURNAL_ENTRY",
         transactionDate: input.discrepancyAdjustmentDate,
         memo: "Reconciliation adjustment",
+        sourceAccountId: accountId,
         reconcileStatus: "R",
         postings:
           difference > 0

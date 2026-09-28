@@ -134,6 +134,11 @@ describe("Reconciliation routes", () => {
 
     const accounts = (await (await app.request("/api/accounts", { headers })).json()) as Array<{ name: string; category: string }>;
     expect(accounts).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Reconciliation Discrepancies", category: "OTHER_EXPENSE" })]));
+
+    const registerRes = await app.request(`/api/accounts/${bankAccount.id}/register`, { headers });
+    const register = (await registerRes.json()) as Array<{ transactionId: string; reconcileStatus: string; deposit?: number }>;
+    const adjustmentEntry = register.find((e) => e.deposit === 800);
+    expect(adjustmentEntry?.reconcileStatus).toBe("R");
   });
 
   test("finish succeeds when the balance matches, marks the entry reconciled, and shows up in history", async () => {
@@ -207,6 +212,14 @@ describe("Reconciliation routes", () => {
     expect(finished.serviceChargeAmount).toBe(15);
     // The deposit + the auto-created service-charge adjustment transaction.
     expect(finished.enteredCount).toBe(2);
+
+    // The adjustment transaction's own register entry must be reconciled
+    // too, not just counted -- reconcileStatus only lands on the entry
+    // whose account matches the transaction's sourceAccountId.
+    const registerRes = await app.request(`/api/accounts/${bankAccount.id}/register`, { headers });
+    const register = (await registerRes.json()) as Array<{ transactionId: string; reconcileStatus: string; payment?: number }>;
+    const adjustmentEntry = register.find((e) => e.payment === 15);
+    expect(adjustmentEntry?.reconcileStatus).toBe("R");
   });
 
   test("detail reports uncleared total, register balance, cleared counts/totals, and reconciledBy", async () => {
