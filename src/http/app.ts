@@ -29,7 +29,9 @@ import {
   productServiceRoutes,
   invoiceRoutes,
   estimateRoutes,
-  employeeRoutes
+  employeeRoutes,
+  reconciliationRoutes,
+  reconciliationDraftRoutes
 } from "@/http/routes";
 
 // `defaultServices` is a test-mode escape hatch: existing tests and scripts
@@ -47,7 +49,7 @@ export function createApp(defaultServices?: ServiceContainer) {
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "X-Debug-Password", "Authorization"]
+      allowHeaders: ["Content-Type", "X-Debug-Password", "Authorization", "X-Confirm-Reconciled"]
     })
   );
   app.use("*", requestLogger());
@@ -79,5 +81,7 @@ export function createApp(defaultServices?: ServiceContainer) {
   invoiceRoutes(app);
   estimateRoutes(app);
   employeeRoutes(app);
+  reconciliationRoutes(app);
+  reconciliationDraftRoutes(app);
   return app;
 }
