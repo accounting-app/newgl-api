@@ -262,6 +262,216 @@ describe("Reconciliation routes", () => {
     expect(detail.registerBalance).toBe(600);
   });
 
+
+  async function chargeToCard(headers: HeadersInit, cardId: string, expenseId: string, amount: number, date: string): Promise<string> {
+    const res = await app.request("/api/expenses", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transactionDate: date,
+        sourceAccountId: cardId,
+        postings: [
+          { accountId: expenseId, type: "DEBIT", amount },
+          { accountId: cardId, type: "CREDIT", amount }
+        ]
+      })
+    });
+    expect(res.status).toBe(201);
+    return ((await res.json()) as { id: string }).id;
+  }
+
+  async function finish(headers: HeadersInit, accountId: string, body: Record<string, unknown>) {
+    return app.request(`/api/accounts/${accountId}/reconciliations/finish`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+  }
+
+  test("a credit card reconciles in natural-balance terms: a $100 charge matches a statement showing $100 owed", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("credit-card");
+    const card = await findAccount(headers, "CREDIT_CARD");
+    const expense = await findAccount(headers, "EXPENSE");
+    const chargeId = await chargeToCard(headers, card.id, expense.id, 100, "2026-04-10");
+
+    const res = await finish(headers, card.id, {
+      statementStartDate: "2026-04-01",
+      statementEndingDate: "2026-04-30",
+      statementEndingBalance: 100,
+      clearedTransactionIds: [chargeId]
+    });
+    expect(res.status).toBe(200);
+    const finished = (await res.json()) as { id: string; clearedBalance: number };
+    expect(finished.clearedBalance).toBe(100);
+
+    const detail = (await (await app.request(`/api/reconciliations/${finished.id}`, { headers })).json()) as {
+      normalBalance: string;
+      bookBalance: number;
+      adjustedBankBalance: number;
+      isBalanced: boolean;
+    };
+    expect(detail.normalBalance).toBe("CREDIT");
+    expect(detail.bookBalance).toBe(100);
+    expect(detail.adjustedBankBalance).toBe(100);
+    expect(detail.isBalanced).toBe(true);
+  });
+
+  test("a credit card discrepancy adjustment takes the side that raises what is owed", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("credit-card-plug");
+    const card = await findAccount(headers, "CREDIT_CARD");
+    const expense = await findAccount(headers, "EXPENSE");
+    const chargeId = await chargeToCard(headers, card.id, expense.id, 100, "2026-04-10");
+
+    // Statement says $150 owed; books only have the $100 charge. The $50
+    // gap means the card's owed balance must RISE by 50 -> a credit.
+    const res = await finish(headers, card.id, {
+      statementStartDate: "2026-04-01",
+      statementEndingDate: "2026-04-30",
+      statementEndingBalance: 150,
+      clearedTransactionIds: [chargeId],
+      discrepancyAdjustmentDate: "2026-04-30"
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { discrepancyAdjustmentAmount: number }).discrepancyAdjustmentAmount).toBe(50);
+
+    const register = (await (await app.request(`/api/accounts/${card.id}/register`, { headers })).json()) as Array<{
+      payment?: number;
+      deposit?: number;
+      reconcileStatus: string;
+    }>;
+    const plug = register.find((e) => e.payment === 50);
+    expect(plug?.reconcileStatus).toBe("R");
+    expect(register.find((e) => e.deposit === 50)).toBeUndefined();
+  });
+
+  test("a transaction can only be reconciled once", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("double-reconcile");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 100, "2026-01-05");
+
+    const first = await finish(headers, bank.id, {
+      statementStartDate: "2026-01-01",
+      statementEndingDate: "2026-01-31",
+      statementEndingBalance: 100,
+      clearedTransactionIds: [txnId]
+    });
+    expect(first.status).toBe(200);
+
+    // Counting it again would make a $200 statement "balance" at $100 cleared + $100 beginning.
+    const again = await finish(headers, bank.id, {
+      statementStartDate: "2026-02-01",
+      statementEndingDate: "2026-02-28",
+      statementEndingBalance: 200,
+      clearedTransactionIds: [txnId]
+    });
+    expect(again.status).toBe(400);
+    expect(((await again.json()) as { error: string }).error).toContain("already reconciled");
+  });
+
+  test("statements form a chain: a new one must end after the last reconciled statement", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("statement-chain");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const first = await depositToBank(headers, bank.id, income.id, 100, "2026-01-05");
+    const second = await depositToBank(headers, bank.id, income.id, 40, "2026-01-20");
+
+    expect(
+      (await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 100, clearedTransactionIds: [first] })).status
+    ).toBe(200);
+
+    const overlapping = await finish(headers, bank.id, {
+      statementStartDate: "2026-01-01",
+      statementEndingDate: "2026-01-31",
+      statementEndingBalance: 140,
+      clearedTransactionIds: [second]
+    });
+    expect(overlapping.status).toBe(400);
+    expect(((await overlapping.json()) as { error: string }).error).toContain("after the last reconciled statement");
+  });
+
+  test("a transaction dated after the statement ending date can't be cleared into it", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("future-dated");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const lateId = await depositToBank(headers, bank.id, income.id, 75, "2026-02-10");
+
+    const res = await finish(headers, bank.id, {
+      statementStartDate: "2026-01-01",
+      statementEndingDate: "2026-01-31",
+      statementEndingBalance: 75,
+      clearedTransactionIds: [lateId]
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("dated after the statement ending date");
+  });
+
+  test("the next beginning balance comes from the reconciled ledger, and setup flags drift if a reconciled item is later undone", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("setup-drift");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 500, "2026-01-10");
+
+    const before = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as {
+      beginningBalance: number;
+      lastStatementEndingDate: string | null;
+      beginningBalanceMatchesLastStatement: boolean;
+    };
+    expect(before.beginningBalance).toBe(0);
+    expect(before.lastStatementEndingDate).toBeNull();
+
+    await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 500, clearedTransactionIds: [txnId] });
+
+    const after = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as typeof before & {
+      normalBalance: string;
+    };
+    expect(after.beginningBalance).toBe(500);
+    expect(after.lastStatementEndingDate).toBe("2026-01-31");
+    expect(after.beginningBalanceMatchesLastStatement).toBe(true);
+    expect(after.normalBalance).toBe("DEBIT");
+
+    // Void a reconciled transaction afterwards: the books no longer back the
+    // last statement that was reconciled against them.
+    const voidRes = await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers });
+    expect(voidRes.status).toBe(200);
+    const drifted = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as typeof before;
+    expect(drifted.beginningBalance).toBe(0);
+    expect(drifted.beginningBalanceMatchesLastStatement).toBe(false);
+  });
+
+  test("an old report keeps listing what was uncleared AT that statement date, even after a later reconciliation clears it", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("historical-uncleared");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const jan = await depositToBank(headers, bank.id, income.id, 500, "2026-01-10");
+    const inTransit = await depositToBank(headers, bank.id, income.id, 100, "2026-01-30");
+
+    const janRes = await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 500, clearedTransactionIds: [jan] });
+    const janId = ((await janRes.json()) as { id: string }).id;
+    // February's statement picks up the deposit that was in transit at Jan 31.
+    expect(
+      (await finish(headers, bank.id, { statementStartDate: "2026-02-01", statementEndingDate: "2026-02-28", statementEndingBalance: 600, clearedTransactionIds: [inTransit] })).status
+    ).toBe(200);
+
+    const janDetail = (await (await app.request(`/api/reconciliations/${janId}`, { headers })).json()) as {
+      unclearedTotal: number;
+      unclearedEntries: Array<{ deposit: number | null }>;
+      bookBalance: number;
+      isBalanced: boolean;
+    };
+    expect(janDetail.unclearedTotal).toBe(100);
+    expect(janDetail.unclearedEntries.map((e) => e.deposit)).toEqual([100]);
+    expect(janDetail.bookBalance).toBe(600);
+    expect(janDetail.isBalanced).toBe(true);
+  });
+
   test("finish rejects an unknown transaction id for this account", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("unknown-txn");

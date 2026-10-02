@@ -2,7 +2,9 @@ import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import { getLedgerName, getServices, getTenantId, getUserEmail } from "@/http/context";
+import { computeBalanceImpact } from "@/core/accounting-reports";
 import { errorResponseSchema } from "@/domain/models";
+import type { Account, RegisterEntry } from "@/domain/models";
 import type { AccountService } from "@/application/contracts";
 import { getSql } from "@/infra/postgres/client";
 
@@ -80,7 +82,14 @@ const reconciliationDetailSchema = reconciliationSchema.extend({
   // QBO's report shows these under "Additional Information" (togglable via
   // "Hide additional information") -- the entries dated on/before the
   // statement date that never got cleared at all, not just their total.
-  unclearedEntries: zod.array(reconciliationEntrySchema)
+  unclearedEntries: zod.array(reconciliationEntrySchema),
+  // The bank-vs-book proof. `bookBalance` is computed from the ledger on
+  // its own (never from the statement), so `isBalanced` is a real check:
+  // statement balance +/- the uncleared items must land exactly on it.
+  normalBalance: zod.enum(["DEBIT", "CREDIT"]),
+  bookBalance: zod.number(),
+  adjustedBankBalance: zod.number(),
+  isBalanced: zod.boolean()
 });
 
 type ReconciliationRow = {
@@ -124,6 +133,37 @@ function serialize(row: ReconciliationRow) {
 async function findLedgerId(sql: ReturnType<typeof getSql>, tenantId: string, ledgerName: string): Promise<string | null> {
   const rows = await sql`select id from ledgers where tenant_id = ${tenantId} and name = ${ledgerName} limit 1`;
   return rows.length > 0 ? (rows[0] as { id: string }).id : null;
+}
+
+/**
+ * Reconciliation math is done in the account's NATURAL balance terms -- the
+ * same terms a bank/card statement uses -- not raw debit-minus-credit.
+ * A register entry's `deposit` column is its DEBIT side and `payment` its
+ * CREDIT side (ledger-engine.ts's createRegisterEntries); for a debit-normal
+ * account (bank, assets) a debit raises the balance, but for a credit-normal
+ * account (credit card, liabilities, equity) it LOWERS it -- a $100 card
+ * charge is a credit that raises what you owe. Assuming debit-normal for
+ * everything made every credit-card statement fail by exactly double.
+ */
+function isCreditNormal(category: Account["category"]): boolean {
+  return computeBalanceImpact(category, "CREDIT", 1) > 0;
+}
+
+function naturalEffect(category: Account["category"], entry: RegisterEntry): number {
+  return computeBalanceImpact(category, "DEBIT", entry.deposit ?? 0) + computeBalanceImpact(category, "CREDIT", entry.payment ?? 0);
+}
+
+/**
+ * The account's balance per the books counting ONLY already-reconciled
+ * transactions -- the theoretically correct "beginning balance" for the
+ * next reconciliation (opening balance + everything reconciled so far),
+ * derived from the ledger itself instead of trusted from the last
+ * statement's typed-in ending balance.
+ */
+function reconciledBalanceFromLedger(account: Account, entries: RegisterEntry[]): number {
+  return entries
+    .filter((entry) => entry.reconcileStatus === "R")
+    .reduce((sum, entry) => sum + naturalEffect(account.category, entry), account.openingBalance ?? 0);
 }
 
 const DISCREPANCIES_ACCOUNT_NAME = "Reconciliation Discrepancies";
@@ -170,6 +210,31 @@ const finishReconciliationRoute = createRoute({
       description: "Out of balance (unless discrepancyAdjustmentDate is set), or an unknown transaction id was checked"
     },
     404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No active company, or no such account" }
+  }
+});
+
+const setupSchema = zod.object({
+  normalBalance: zod.enum(["DEBIT", "CREDIT"]),
+  // What the books say is already reconciled (opening balance + every
+  // reconciled transaction) -- the beginning balance the next
+  // reconciliation will actually use.
+  beginningBalance: zod.number(),
+  lastStatementEndingDate: zod.string().nullable(),
+  lastStatementEndingBalance: zod.number().nullable(),
+  lastReconciliationId: zod.string().nullable(),
+  // False means a transaction reconciled in an earlier session was edited,
+  // deleted, or un-reconciled afterwards: the books no longer agree with
+  // the last statement that was reconciled.
+  beginningBalanceMatchesLastStatement: zod.boolean()
+});
+
+const setupRoute = createRoute({
+  method: "get",
+  path: "/api/accounts/{accountId}/reconciliation-setup",
+  request: { params: accountIdParam },
+  responses: {
+    200: { content: { "application/json": { schema: setupSchema } }, description: "What the Reconcile setup screen needs to know about this account" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such account" }
   }
 });
 
@@ -230,33 +295,62 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No account '${accountId}' for this company` }, 404);
     }
 
+    // Statements are a chain: each must end after the last one did, or the
+    // new one would re-cover period that was already reconciled.
     const previousRows = await sql`
-      select statement_ending_balance from reconciliations
+      select statement_ending_date from reconciliations
       where ledger_id = ${ledgerId} and account_id = ${accountId}
       order by statement_ending_date desc, completed_at desc
       limit 1
     `;
-    const beginningBalance =
-      previousRows.length > 0
-        ? Number((previousRows[0] as { statement_ending_balance: string }).statement_ending_balance)
-        : (account.openingBalance ?? 0);
+    if (previousRows.length > 0) {
+      const lastEndingDate = toDateOnly((previousRows[0] as { statement_ending_date: Date }).statement_ending_date);
+      if (input.statementEndingDate <= lastEndingDate) {
+        return context.json(
+          { error: `The statement ending date must be after the last reconciled statement (${lastEndingDate}).`, difference: 0 },
+          400
+        );
+      }
+    }
 
     const entries = await registerService.listRegisterEntries(accountId);
     const entriesByTransactionId = new Map(entries.map((entry) => [entry.transactionId, entry]));
+    const category = account.category;
+    const creditNormal = isCreditNormal(category);
 
-    let paymentsTotal = 0;
-    let depositsTotal = 0;
+    // Beginning balance = what the books say is already reconciled, not
+    // whatever the previous statement said -- so the equation
+    // beginning + cleared = ending is checked against the ledger itself.
+    const beginningBalance = reconciledBalanceFromLedger(account, entries);
+
+    let clearedNatural = 0;
     for (const transactionId of input.clearedTransactionIds) {
       const entry = entriesByTransactionId.get(transactionId);
       if (!entry) {
         return context.json({ error: `No register entry for transaction '${transactionId}' on this account`, difference: 0 }, 400);
       }
-      paymentsTotal += entry.payment ?? 0;
-      depositsTotal += entry.deposit ?? 0;
+      // A transaction is reconciled exactly once. Counting it again would
+      // double its effect on this statement (it's already inside the
+      // beginning balance).
+      if (entry.reconcileStatus === "R") {
+        return context.json({ error: `Transaction '${entry.refNumber ?? entry.transactionId}' is already reconciled.`, difference: 0 }, 400);
+      }
+      if (entry.date > input.statementEndingDate) {
+        return context.json(
+          { error: `Transaction '${entry.refNumber ?? entry.transactionId}' is dated after the statement ending date and can't be part of this statement.`, difference: 0 },
+          400
+        );
+      }
+      clearedNatural += naturalEffect(category, entry);
     }
 
-    const adjustmentDelta = (input.interestEarned?.amount ?? 0) - (input.serviceCharge?.amount ?? 0);
-    let clearedBalance = beginningBalance - paymentsTotal + depositsTotal + adjustmentDelta;
+    // Service/finance charge: Dr expense, Cr the account. Interest: Dr the
+    // account, Cr income. Each moves the account's natural balance in the
+    // direction its debit/credit side implies for THIS account type.
+    const adjustmentNatural =
+      (input.interestEarned ? computeBalanceImpact(category, "DEBIT", input.interestEarned.amount) : 0) +
+      (input.serviceCharge ? computeBalanceImpact(category, "CREDIT", input.serviceCharge.amount) : 0);
+    let clearedBalance = beginningBalance + clearedNatural + adjustmentNatural;
     let difference = input.statementEndingBalance - clearedBalance;
 
     if (Math.abs(difference) > 0.005 && !input.discrepancyAdjustmentDate) {
@@ -306,22 +400,22 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     if (Math.abs(difference) > 0.005 && input.discrepancyAdjustmentDate) {
       const discrepancyAccountId = await findOrCreateDiscrepanciesAccount(accountService);
       const amount = Math.abs(difference);
+      // `difference` is the NATURAL-balance change the account needs. A
+      // debit-normal account gains on a debit and loses on a credit; a
+      // credit-normal one is the reverse -- so which side the account
+      // takes depends on both the sign and its normal balance.
+      const accountSide = (difference > 0) === !creditNormal ? "DEBIT" : "CREDIT";
+      const otherSide = accountSide === "DEBIT" ? "CREDIT" : "DEBIT";
       const draft = await transactionService.createTransaction({
         type: "JOURNAL_ENTRY",
         transactionDate: input.discrepancyAdjustmentDate,
         memo: "Reconciliation adjustment",
         sourceAccountId: accountId,
         reconcileStatus: "R",
-        postings:
-          difference > 0
-            ? [
-                { accountId, type: "DEBIT", amount },
-                { accountId: discrepancyAccountId, type: "CREDIT", amount }
-              ]
-            : [
-                { accountId: discrepancyAccountId, type: "DEBIT", amount },
-                { accountId, type: "CREDIT", amount }
-              ]
+        postings: [
+          { accountId, type: accountSide, amount },
+          { accountId: discrepancyAccountId, type: otherSide, amount }
+        ]
       });
       const posted = await transactionService.postTransaction(draft.id);
       adjustmentTransactionIds.push(posted.id);
@@ -383,6 +477,47 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     );
   });
 
+  app.openapi(setupRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const ledgerName = getLedgerName(context);
+    const { accountId } = context.req.valid("param");
+    const sql = getSql();
+    const { accountService, registerService } = getServices(context);
+
+    let account;
+    try {
+      account = await accountService.getAccountById(accountId);
+    } catch {
+      return context.json({ error: `No account '${accountId}' for this company` }, 404);
+    }
+    const ledgerId = await findLedgerId(sql, tenantId, ledgerName);
+    const entries = await registerService.listRegisterEntries(accountId);
+    const beginningBalance = reconciledBalanceFromLedger(account, entries);
+
+    const lastRows = ledgerId
+      ? await sql`
+          select id, statement_ending_date, statement_ending_balance from reconciliations
+          where ledger_id = ${ledgerId} and account_id = ${accountId}
+          order by statement_ending_date desc, completed_at desc
+          limit 1
+        `
+      : [];
+    const last = lastRows[0] as { id: string; statement_ending_date: Date; statement_ending_balance: string } | undefined;
+    const lastEndingBalance = last ? Number(last.statement_ending_balance) : null;
+
+    return context.json(
+      {
+        normalBalance: isCreditNormal(account.category) ? ("CREDIT" as const) : ("DEBIT" as const),
+        beginningBalance,
+        lastStatementEndingDate: last ? toDateOnly(last.statement_ending_date) : null,
+        lastStatementEndingBalance: lastEndingBalance,
+        lastReconciliationId: last?.id ?? null,
+        beginningBalanceMatchesLastStatement: lastEndingBalance === null || Math.abs(lastEndingBalance - beginningBalance) < 0.005
+      },
+      200
+    );
+  });
+
   app.openapi(historyRoute, async (context) => {
     const tenantId = getTenantId(context);
     const ledgerName = getLedgerName(context);
@@ -423,7 +558,7 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     const ledgerName = getLedgerName(context);
     const { reconciliationId } = context.req.valid("param");
     const sql = getSql();
-    const { registerService } = getServices(context);
+    const { registerService, accountService } = getServices(context);
 
     const rows = await sql`
       select r.id, r.account_id, r.statement_start_date, r.statement_ending_date, r.statement_beginning_balance,
@@ -458,6 +593,11 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     }
 
     const registerEntries = await registerService.listRegisterEntries(row.account_id);
+    const account = await accountService.getAccountById(row.account_id);
+    const category = account.category;
+    const creditNormal = isCreditNormal(category);
+    const statementEndingDate = toDateOnly(row.statement_ending_date);
+
     const clearedEntries = registerEntries.filter((entry) => transactionIds.has(entry.transactionId));
     const entries = clearedEntries.map(toEntry);
 
@@ -466,20 +606,59 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     const depositsCount = clearedEntries.filter((entry) => (entry.deposit ?? 0) > 0).length;
     const depositsTotal = clearedEntries.reduce((sum, entry) => sum + (entry.deposit ?? 0), 0);
 
-    // Register entries dated on/before the statement date that this
-    // session's own statement_ending_date reflects, but were never
-    // cleared/reconciled at all -- matches QBO's "Uncleared transactions
-    // as of [date]" line (and its "Additional Information" listing), and
-    // registerBalance is what the account's real running balance is once
-    // those are added back in.
-    const statementEndingDate = toDateOnly(row.statement_ending_date);
-    const unclearedRegisterEntries = registerEntries.filter((entry) => entry.reconcileStatus === "" && entry.date <= statementEndingDate);
-    const unclearedTotal = unclearedRegisterEntries.reduce((sum, entry) => sum + (entry.deposit ?? 0) - (entry.payment ?? 0), 0);
+    // "Uncleared as of the statement date" is a statement about THAT
+    // moment: dated on/before it, and not reconciled by this session or
+    // any earlier one. Using each entry's CURRENT status instead would make
+    // an old report change retroactively whenever a later reconciliation
+    // clears something. An entry marked R by hand (no session at all) is
+    // treated as reconciled unless a LATER session is what reconciled it.
+    const ledgerId = await findLedgerId(sql, tenantId, ledgerName);
+    const sessionMembership = await sql`
+      select e.transaction_id, r2.statement_ending_date
+      from reconciliation_entries e
+      join reconciliations r2 on r2.id = e.reconciliation_id
+      where r2.ledger_id = ${ledgerId} and r2.account_id = ${row.account_id}
+    `;
+    const reconciledByThen = new Set<string>();
+    const reconciledLater = new Set<string>();
+    for (const membership of sessionMembership as Array<{ transaction_id: string; statement_ending_date: Date }>) {
+      (toDateOnly(membership.statement_ending_date) <= statementEndingDate ? reconciledByThen : reconciledLater).add(membership.transaction_id);
+    }
+    const unclearedRegisterEntries = registerEntries.filter(
+      (entry) =>
+        entry.date <= statementEndingDate &&
+        !reconciledByThen.has(entry.transactionId) &&
+        !(entry.reconcileStatus === "R" && !reconciledLater.has(entry.transactionId))
+    );
+    const unclearedTotal = unclearedRegisterEntries.reduce((sum, entry) => sum + naturalEffect(category, entry), 0);
     const unclearedEntries = unclearedRegisterEntries.map(toEntry);
-    const registerBalance = Number(row.statement_ending_balance) + unclearedTotal;
+
+    // The proof: the books' own balance at the statement date, computed
+    // from the ledger independently of the statement. The statement's
+    // ending balance plus the items it hasn't seen yet (deposits in
+    // transit, outstanding checks) must equal it exactly.
+    const bookBalance = registerEntries
+      .filter((entry) => entry.date <= statementEndingDate)
+      .reduce((sum, entry) => sum + naturalEffect(category, entry), account.openingBalance ?? 0);
+    const adjustedBankBalance = Number(row.statement_ending_balance) + unclearedTotal;
+    const isBalanced = Math.abs(adjustedBankBalance - bookBalance) < 0.005;
 
     return context.json(
-      { ...serialize(row), entries, paymentsCount, paymentsTotal, depositsCount, depositsTotal, unclearedTotal, registerBalance, unclearedEntries },
+      {
+        ...serialize(row),
+        entries,
+        paymentsCount,
+        paymentsTotal,
+        depositsCount,
+        depositsTotal,
+        unclearedTotal,
+        registerBalance: bookBalance,
+        unclearedEntries,
+        normalBalance: creditNormal ? ("CREDIT" as const) : ("DEBIT" as const),
+        bookBalance,
+        adjustedBankBalance,
+        isBalanced
+      },
       200
     );
   });
