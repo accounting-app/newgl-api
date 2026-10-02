@@ -753,7 +753,8 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     const rows = await sql`
       select r.id, r.account_id, r.statement_start_date, r.statement_ending_date, r.statement_beginning_balance,
              r.statement_ending_balance, r.cleared_balance, r.service_charge_amount, r.interest_earned_amount, r.discrepancy_adjustment_amount, r.created_by,
-             r.completed_at, (select count(*) from reconciliation_entries e where e.reconciliation_id = r.id) as entered_count
+             r.completed_at, (select count(*) from reconciliation_entries e where e.reconciliation_id = r.id) as entered_count,
+             r.service_charge_transaction_id, r.interest_earned_transaction_id, r.discrepancy_adjustment_transaction_id
       from reconciliations r
       join ledgers l on l.id = r.ledger_id
       where l.tenant_id = ${tenantId} and l.name = ${ledgerName} and r.id = ${reconciliationId}
@@ -763,11 +764,18 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No reconciliation '${reconciliationId}' for this company` }, 404);
     }
     const row = rows[0] as ReconciliationRow;
+    const autoPosted = row as unknown as { service_charge_transaction_id: string | null; interest_earned_transaction_id: string | null; discrepancy_adjustment_transaction_id: string | null };
 
     const entryRows = await sql`
       select transaction_id from reconciliation_entries where reconciliation_id = ${reconciliationId}
     `;
-    const transactionIds = new Set(entryRows.map((entryRow: unknown) => (entryRow as { transaction_id: string }).transaction_id));
+    // The service charge / interest / adjustment the finish auto-posted get
+    // their own lines in the report's Summary. Leaving them in the cleared
+    // totals as well would count them twice and the Summary wouldn't foot.
+    const autoPostedIds = new Set([autoPosted.service_charge_transaction_id, autoPosted.interest_earned_transaction_id, autoPosted.discrepancy_adjustment_transaction_id].filter((id): id is string => id !== null));
+    const transactionIds = new Set(
+      entryRows.map((entryRow: unknown) => (entryRow as { transaction_id: string }).transaction_id).filter((id: string) => !autoPostedIds.has(id))
+    );
 
     function toEntry(entry: (typeof registerEntries)[number]) {
       return {

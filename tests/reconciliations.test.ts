@@ -580,6 +580,32 @@ describe("Reconciliation routes", () => {
     expect((await setStatus("", { "X-Confirm-Reconciled": "true" })).status).toBe(200);
   });
 
+  test("the report Summary foots: auto-posted adjustment is its own line, not also in the cleared totals", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("summary-foots");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 100, "2026-01-10");
+    const res = await finish(headers, bank.id, {
+      statementStartDate: "2026-01-01",
+      statementEndingDate: "2026-01-31",
+      statementEndingBalance: 150,
+      clearedTransactionIds: [txnId],
+      discrepancyAdjustmentDate: "2026-01-31"
+    });
+    const { id } = (await res.json()) as { id: string };
+    const detail = (await (await app.request(`/api/reconciliations/${id}`, { headers })).json()) as {
+      statementBeginningBalance: number;
+      statementEndingBalance: number;
+      discrepancyAdjustmentAmount: number;
+      depositsTotal: number;
+      paymentsTotal: number;
+      depositsCount: number;
+    };
+    expect(detail.depositsCount).toBe(1);
+    expect(detail.statementBeginningBalance + detail.depositsTotal - detail.paymentsTotal + detail.discrepancyAdjustmentAmount).toBe(detail.statementEndingBalance);
+  });
+
   test("voiding a transaction that was never reconciled needs no confirmation", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("void-free");
