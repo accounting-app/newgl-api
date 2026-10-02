@@ -1,6 +1,7 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
+import { ValidationError } from "@/core/errors";
 import { getServices } from "@/http/context";
 import { guardReconciledEntry, guardReconciledTransaction } from "@/http/reconciled-guard";
 import {
@@ -271,6 +272,14 @@ export function transactionRoutes(app: OpenAPIHono): void {
   app.openapi(registerReconcileRoute, async (context) => {
     const { entryId } = context.req.valid("param");
     const { status } = context.req.valid("json");
+    // "R" only comes from finishing a reconciliation (that's what records the
+    // statement, its history and its report); hand-marking it would leave
+    // the books "reconciled" against no statement at all. Un-reconciling an
+    // existing R entry is a warned change like any other edit to one.
+    if (status === "R") {
+      throw new ValidationError("Reconciled is set by finishing a reconciliation on the Reconcile screen.");
+    }
+    await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.setReconcileStatus(entryId, status);
     return context.json(entry, 200);
   });
