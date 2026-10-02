@@ -238,6 +238,41 @@ const setupRoute = createRoute({
   }
 });
 
+const undoRoute = createRoute({
+  method: "post",
+  path: "/api/reconciliations/{reconciliationId}/undo",
+  request: { params: reconciliationIdParam },
+  responses: {
+    200: { content: { "application/json": { schema: zod.object({ undone: zod.literal(true), accountId: zod.string() }) } }, description: "The reconciliation was undone" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such reconciliation for this company" },
+    409: { content: { "application/json": { schema: errorResponseSchema } }, description: "Only the most recent reconciliation for an account can be undone" }
+  }
+});
+
+const discrepancyRowSchema = zod.object({
+  reconciliationId: zod.string().uuid(),
+  statementEndingDate: zod.string(),
+  transactionId: zod.string(),
+  change: zod.enum(["DELETED", "UNRECONCILED", "AMOUNT_CHANGED", "DATE_CHANGED"]),
+  date: zod.string().nullable(),
+  refNumber: zod.string().nullable(),
+  payee: zod.string().nullable(),
+  // Natural-balance effect when it was reconciled vs. now (null = unknown or gone).
+  reconciledAmount: zod.number().nullable(),
+  currentAmount: zod.number().nullable(),
+  reconciledDate: zod.string().nullable()
+});
+
+const discrepancyRoute = createRoute({
+  method: "get",
+  path: "/api/accounts/{accountId}/reconciliation-discrepancies",
+  request: { params: accountIdParam },
+  responses: {
+    200: { content: { "application/json": { schema: zod.array(discrepancyRowSchema) } }, description: "Reconciled transactions that were changed, deleted or un-reconciled afterwards" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such account" }
+  }
+});
+
 const historyRoute = createRoute({
   method: "get",
   path: "/api/accounts/{accountId}/reconciliations",
@@ -463,10 +498,18 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     `;
     const reconciliationId = (inserted as { id: string }).id;
 
+    // Snapshot each entry as it is reconciled (natural-balance effect and
+    // date) so the discrepancy report can later tell what changed. Uses the
+    // fresh entries: the adjustment transactions only exist there.
     for (const transactionId of clearedEntryIds) {
+      const snapshotEntry = freshEntriesByTransactionId.get(transactionId);
       await sql`
-        insert into reconciliation_entries (reconciliation_id, transaction_id, account_id, cleared_amount_snapshot)
-        values (${reconciliationId}, ${transactionId}, ${accountId}, null)
+        insert into reconciliation_entries (reconciliation_id, transaction_id, account_id, cleared_amount_snapshot, date_snapshot)
+        values (
+          ${reconciliationId}, ${transactionId}, ${accountId},
+          ${snapshotEntry ? naturalEffect(category, snapshotEntry) : null},
+          ${snapshotEntry?.date ?? null}
+        )
         on conflict do nothing
       `;
     }
@@ -516,6 +559,139 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
       },
       200
     );
+  });
+
+  app.openapi(undoRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const ledgerName = getLedgerName(context);
+    const { reconciliationId } = context.req.valid("param");
+    const sql = getSql();
+    const { registerService, transactionService } = getServices(context);
+
+    const rows = await sql`
+      select r.id, r.ledger_id, r.account_id, r.service_charge_transaction_id, r.interest_earned_transaction_id, r.discrepancy_adjustment_transaction_id
+      from reconciliations r
+      join ledgers l on l.id = r.ledger_id
+      where l.tenant_id = ${tenantId} and l.name = ${ledgerName} and r.id = ${reconciliationId}
+      limit 1
+    `;
+    if (rows.length === 0) {
+      return context.json({ error: `No reconciliation '${reconciliationId}' for this company` }, 404);
+    }
+    const row = rows[0] as {
+      ledger_id: string;
+      account_id: string;
+      service_charge_transaction_id: string | null;
+      interest_earned_transaction_id: string | null;
+      discrepancy_adjustment_transaction_id: string | null;
+    };
+
+    // QBO only lets the MOST RECENT reconciliation be undone: each statement
+    // starts from the books as the previous one left them, so undoing an
+    // older one would leave every later one standing on a changed base.
+    const latest = await sql`
+      select id from reconciliations
+      where ledger_id = ${row.ledger_id} and account_id = ${row.account_id}
+      order by statement_ending_date desc, completed_at desc
+      limit 1
+    `;
+    if ((latest[0] as { id: string }).id !== reconciliationId) {
+      return context.json({ error: "Only the most recent reconciliation for this account can be undone." }, 409);
+    }
+
+    const adjustmentTransactionIds = [row.service_charge_transaction_id, row.interest_earned_transaction_id, row.discrepancy_adjustment_transaction_id].filter(
+      (id): id is string => id !== null
+    );
+    const memberRows = await sql`select transaction_id from reconciliation_entries where reconciliation_id = ${reconciliationId}`;
+    const memberTransactionIds = (memberRows as Array<{ transaction_id: string }>)
+      .map((m) => m.transaction_id)
+      .filter((id) => !adjustmentTransactionIds.includes(id));
+
+    // The auto-posted adjustment entries (service charge, interest,
+    // discrepancy) only existed because of this reconciliation, so undoing
+    // it voids them -- the ledger returns to exactly how it was before.
+    // (Voiding regenerates register-entry ids, hence the refetch below.)
+    for (const transactionId of adjustmentTransactionIds) {
+      try {
+        await transactionService.voidTransaction(transactionId);
+      } catch {
+        // Already voided by hand: nothing left to reverse.
+      }
+    }
+
+    const freshEntries = await registerService.listRegisterEntries(row.account_id);
+    const freshByTransactionId = new Map(freshEntries.map((entry) => [entry.transactionId, entry]));
+    for (const transactionId of memberTransactionIds) {
+      const entry = freshByTransactionId.get(transactionId);
+      if (entry && entry.reconcileStatus === "R") {
+        await registerService.setReconcileStatus(entry.id, "");
+      }
+    }
+
+    await sql`delete from reconciliations where id = ${reconciliationId}`;
+    return context.json({ undone: true as const, accountId: row.account_id }, 200);
+  });
+
+  app.openapi(discrepancyRoute, async (context) => {
+    const tenantId = getTenantId(context);
+    const ledgerName = getLedgerName(context);
+    const { accountId } = context.req.valid("param");
+    const sql = getSql();
+    const { accountService, registerService } = getServices(context);
+
+    let account;
+    try {
+      account = await accountService.getAccountById(accountId);
+    } catch {
+      return context.json({ error: `No account '${accountId}' for this company` }, 404);
+    }
+    const entries = await registerService.listRegisterEntries(accountId);
+    const entriesByTransactionId = new Map(entries.map((entry) => [entry.transactionId, entry]));
+
+    const snapshots = await sql`
+      select r.id as reconciliation_id, r.statement_ending_date, e.transaction_id, e.cleared_amount_snapshot, e.date_snapshot
+      from reconciliation_entries e
+      join reconciliations r on r.id = e.reconciliation_id
+      join ledgers l on l.id = r.ledger_id
+      where l.tenant_id = ${tenantId} and l.name = ${ledgerName} and r.account_id = ${accountId}
+      order by r.statement_ending_date desc, e.transaction_id
+    `;
+
+    const issues: Array<zod.infer<typeof discrepancyRowSchema>> = [];
+    for (const snap of snapshots as Array<{
+      reconciliation_id: string;
+      statement_ending_date: Date;
+      transaction_id: string;
+      cleared_amount_snapshot: string | null;
+      date_snapshot: Date | null;
+    }>) {
+      const entry = entriesByTransactionId.get(snap.transaction_id);
+      const reconciledAmount = snap.cleared_amount_snapshot !== null ? Number(snap.cleared_amount_snapshot) : null;
+      const reconciledDate = snap.date_snapshot ? toDateOnly(snap.date_snapshot) : null;
+      const base = {
+        reconciliationId: snap.reconciliation_id,
+        statementEndingDate: toDateOnly(snap.statement_ending_date),
+        transactionId: snap.transaction_id,
+        date: entry?.date ?? reconciledDate,
+        refNumber: entry?.refNumber ?? null,
+        payee: entry?.payee ?? null,
+        reconciledAmount,
+        reconciledDate
+      };
+      if (!entry) {
+        issues.push({ ...base, change: "DELETED", currentAmount: null });
+        continue;
+      }
+      const currentAmount = naturalEffect(account.category, entry);
+      if (entry.reconcileStatus !== "R") {
+        issues.push({ ...base, change: "UNRECONCILED", currentAmount });
+      } else if (reconciledAmount !== null && Math.abs(currentAmount - reconciledAmount) > 0.005) {
+        issues.push({ ...base, change: "AMOUNT_CHANGED", currentAmount });
+      } else if (reconciledDate !== null && entry.date !== reconciledDate) {
+        issues.push({ ...base, change: "DATE_CHANGED", currentAmount });
+      }
+    }
+    return context.json(issues, 200);
   });
 
   app.openapi(historyRoute, async (context) => {

@@ -8,7 +8,8 @@ export const errorHandler: ErrorHandler = (error, context) => {
     return context.json({ error: error.message }, 404);
   }
   if (error instanceof AppError) {
-    return context.json({ error: error.message }, error.statusCode as any);
+    const code = (error as { code?: string }).code;
+    return context.json({ error: error.message, ...(code ? { code } : {}) }, error.statusCode as any);
   }
   if (error instanceof HTTPException) {
     return context.json({ error: error.message }, error.status);

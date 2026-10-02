@@ -2,6 +2,7 @@ import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
 import { getServices } from "@/http/context";
+import { guardReconciledEntry, guardReconciledTransaction } from "@/http/reconciled-guard";
 import {
   createTransactionInputSchema,
   errorResponseSchema,
@@ -224,12 +225,14 @@ export function transactionRoutes(app: OpenAPIHono): void {
 
   app.openapi(transactionVoidRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
+    await guardReconciledTransaction(context, transactionId);
     const transaction = await getServices(context).transactionService.voidTransaction(transactionId);
     return context.json(transaction, 200);
   });
 
   app.openapi(transactionReverseRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
+    await guardReconciledTransaction(context, transactionId);
     const transaction = await getServices(context).transactionService.reverseTransaction(transactionId);
     return context.json(transaction, 200);
   });
@@ -260,6 +263,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
   app.openapi(registerUpdateRoute, async (context) => {
     const { entryId } = context.req.valid("param");
     const input = context.req.valid("json");
+    await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.updateRegisterEntry(entryId, input);
     return context.json(entry, 200);
   });
@@ -273,6 +277,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
 
   app.openapi(registerDeleteRoute, async (context) => {
     const { entryId } = context.req.valid("param");
+    await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.deleteRegisterEntry(entryId);
     return context.json(entry, 200);
   });

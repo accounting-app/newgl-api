@@ -438,7 +438,7 @@ describe("Reconciliation routes", () => {
 
     // Void a reconciled transaction afterwards: the books no longer back the
     // last statement that was reconciled against them.
-    const voidRes = await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers });
+    const voidRes = await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers: { ...headers, "X-Confirm-Reconciled": "true" } });
     expect(voidRes.status).toBe(200);
     const drifted = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as typeof before;
     expect(drifted.beginningBalance).toBe(0);
@@ -470,6 +470,97 @@ describe("Reconciliation routes", () => {
     expect(janDetail.unclearedEntries.map((e) => e.deposit)).toEqual([100]);
     expect(janDetail.bookBalance).toBe(600);
     expect(janDetail.isBalanced).toBe(true);
+  });
+
+
+  test("undo reverses the reconciliation: statuses reset, adjustments voided, session gone, beginning balance back", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("undo");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const expense = await findAccount(headers, "EXPENSE");
+    const txnId = await depositToBank(headers, bank.id, income.id, 1000, "2026-02-01");
+    const finishRes = await finish(headers, bank.id, {
+      statementStartDate: "2026-02-01",
+      statementEndingDate: "2026-02-28",
+      statementEndingBalance: 985,
+      serviceCharge: { amount: 15, date: "2026-02-28", expenseAccountId: expense.id },
+      clearedTransactionIds: [txnId]
+    });
+    const sessionId = ((await finishRes.json()) as { id: string }).id;
+
+    const undoRes = await app.request(`/api/reconciliations/${sessionId}/undo`, { method: "POST", headers });
+    expect(undoRes.status).toBe(200);
+
+    const register = (await (await app.request(`/api/accounts/${bank.id}/register`, { headers })).json()) as Array<{
+      transactionId: string;
+      reconcileStatus: string;
+      payment?: number;
+    }>;
+    expect(register.find((e) => e.transactionId === txnId)?.reconcileStatus).toBe("");
+    // The auto-posted service charge existed only for this reconciliation.
+    expect(register.find((e) => e.payment === 15)).toBeUndefined();
+
+    const history = (await (await app.request(`/api/accounts/${bank.id}/reconciliations`, { headers })).json()) as unknown[];
+    expect(history).toEqual([]);
+    const setup = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as { beginningBalance: number };
+    expect(setup.beginningBalance).toBe(0);
+
+    // ...and the same deposit can be reconciled again afterwards.
+    const again = await finish(headers, bank.id, { statementStartDate: "2026-02-01", statementEndingDate: "2026-02-28", statementEndingBalance: 1000, clearedTransactionIds: [txnId] });
+    expect(again.status).toBe(200);
+  });
+
+  test("only the most recent reconciliation can be undone", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("undo-latest");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const a = await depositToBank(headers, bank.id, income.id, 100, "2026-01-10");
+    const b = await depositToBank(headers, bank.id, income.id, 50, "2026-02-10");
+    const jan = ((await (await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 100, clearedTransactionIds: [a] })).json()) as { id: string }).id;
+    const feb = ((await (await finish(headers, bank.id, { statementStartDate: "2026-02-01", statementEndingDate: "2026-02-28", statementEndingBalance: 150, clearedTransactionIds: [b] })).json()) as { id: string }).id;
+
+    const tooEarly = await app.request(`/api/reconciliations/${jan}/undo`, { method: "POST", headers });
+    expect(tooEarly.status).toBe(409);
+    expect((await app.request(`/api/reconciliations/${feb}/undo`, { method: "POST", headers })).status).toBe(200);
+    expect((await app.request(`/api/reconciliations/${jan}/undo`, { method: "POST", headers })).status).toBe(200);
+  });
+
+  test("changing a reconciled transaction asks for confirmation (409) and the change lands on the discrepancy report", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("discrepancy-report");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 500, "2026-01-10");
+    await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 500, clearedTransactionIds: [txnId] });
+
+    const clean = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-discrepancies`, { headers })).json()) as unknown[];
+    expect(clean).toEqual([]);
+
+    const blocked = await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers });
+    expect(blocked.status).toBe(409);
+    expect(((await blocked.json()) as { code: string }).code).toBe("RECONCILED_TRANSACTION");
+
+    const confirmed = await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers: { ...headers, "X-Confirm-Reconciled": "true" } });
+    expect(confirmed.status).toBe(200);
+
+    const issues = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-discrepancies`, { headers })).json()) as Array<{
+      change: string;
+      reconciledAmount: number | null;
+      transactionId: string;
+    }>;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ change: "DELETED", reconciledAmount: 500, transactionId: txnId });
+  });
+
+  test("voiding a transaction that was never reconciled needs no confirmation", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("void-free");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 20, "2026-01-10");
+    expect((await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers })).status).toBe(200);
   });
 
   test("finish rejects an unknown transaction id for this account", async () => {
