@@ -12,7 +12,7 @@ import type {
   RegisterEntry,
   Transaction
 } from "@/domain/models";
-import { createId } from "@/shared/utils/id";
+import { createId, createStableId } from "@/shared/utils/id";
 import { nowIso } from "@/shared/utils/date";
 
 const ACCOUNT_TYPE_BY_CATEGORY: Record<Account["category"], ChartOfAccount["accountType"]> = {
@@ -150,7 +150,7 @@ function createRegisterEntries(store: LedgerStore, transaction: Transaction): vo
       isSourceAccountEntry && transaction.reconcileStatus ? transaction.reconcileStatus : "";
 
     const entry: RegisterEntry = {
-      id: createId(),
+      id: createStableId(`register-entry:${transaction.id}:${accountId}`),
       accountId,
       transactionId: transaction.id,
       transactionType: transaction.type,
