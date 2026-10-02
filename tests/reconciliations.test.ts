@@ -563,6 +563,91 @@ describe("Reconciliation routes", () => {
     expect((await app.request(`/api/transactions/${txnId}/void`, { method: "POST", headers })).status).toBe(200);
   });
 
+
+  test("Save for later keeps one draft per account, setup exposes it, and Finish discards it", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("draft");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 100, "2026-01-05");
+    const draftUrl = `/api/accounts/${bank.id}/reconciliation-draft`;
+    const json = { ...headers, "Content-Type": "application/json" };
+
+    expect(await (await app.request(draftUrl, { headers })).json()).toBeNull();
+
+    const saved = await app.request(draftUrl, {
+      method: "PUT",
+      headers: json,
+      body: JSON.stringify({
+        statementStartDate: "2026-01-01",
+        statementEndingDate: "2026-01-31",
+        statementEndingBalance: 100,
+        serviceCharge: null,
+        interestEarned: null,
+        clearedTransactionIds: [txnId]
+      })
+    });
+    expect(saved.status).toBe(200);
+
+    // Saving again replaces, it doesn't add a second draft.
+    await app.request(draftUrl, {
+      method: "PUT",
+      headers: json,
+      body: JSON.stringify({
+        statementStartDate: "2026-01-01",
+        statementEndingDate: "2026-01-31",
+        statementEndingBalance: 100,
+        serviceCharge: null,
+        interestEarned: null,
+        clearedTransactionIds: []
+      })
+    });
+    const draft = (await (await app.request(draftUrl, { headers })).json()) as { clearedTransactionIds: string[]; statementEndingBalance: number };
+    expect(draft.clearedTransactionIds).toEqual([]);
+    expect(draft.statementEndingBalance).toBe(100);
+
+    const setup = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-setup`, { headers })).json()) as {
+      draft: { statementEndingDate: string } | null;
+    };
+    expect(setup.draft?.statementEndingDate).toBe("2026-01-31");
+
+    expect((await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 100, clearedTransactionIds: [txnId] })).status).toBe(200);
+    expect(await (await app.request(draftUrl, { headers })).json()).toBeNull();
+
+    expect(((await (await app.request(draftUrl, { method: "DELETE", headers })).json()) as { deleted: boolean }).deleted).toBe(false);
+  });
+
+  test("a statement file can be attached to a reconciliation, listed, downloaded and removed", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("attachment");
+    const bank = await findAccount(headers, "BANK");
+    const income = await findAccount(headers, "INCOME");
+    const txnId = await depositToBank(headers, bank.id, income.id, 100, "2026-01-05");
+    const sessionId = ((await (await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 100, clearedTransactionIds: [txnId] })).json()) as { id: string }).id;
+
+    const form = new FormData();
+    form.append("file", new File(["%PDF-1.4 fake statement"], "january-statement.pdf", { type: "application/pdf" }));
+    const upload = await app.request(`/api/reconciliations/${sessionId}/attachments`, { method: "POST", headers, body: form });
+    expect(upload.status).toBe(201);
+    const attachment = (await upload.json()) as { id: string; fileName: string };
+    expect(attachment.fileName).toBe("january-statement.pdf");
+
+    const list = (await (await app.request(`/api/accounts/${bank.id}/reconciliation-attachments`, { headers })).json()) as Array<{ id: string; reconciliationId: string }>;
+    expect(list).toEqual([expect.objectContaining({ id: attachment.id, reconciliationId: sessionId })]);
+
+    const download = await app.request(`/api/reconciliation-attachments/${attachment.id}`, { headers });
+    expect(download.status).toBe(200);
+    expect(download.headers.get("content-type")).toBe("application/pdf");
+    expect(await download.text()).toBe("%PDF-1.4 fake statement");
+
+    const empty = new FormData();
+    empty.append("file", new File([""], "empty.pdf", { type: "application/pdf" }));
+    expect((await app.request(`/api/reconciliations/${sessionId}/attachments`, { method: "POST", headers, body: empty })).status).toBe(400);
+
+    expect((await app.request(`/api/reconciliation-attachments/${attachment.id}`, { method: "DELETE", headers })).status).toBe(200);
+    expect(await (await app.request(`/api/accounts/${bank.id}/reconciliation-attachments`, { headers })).json()).toEqual([]);
+  });
+
   test("finish rejects an unknown transaction id for this account", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("unknown-txn");

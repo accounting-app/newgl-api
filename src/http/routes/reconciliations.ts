@@ -225,7 +225,10 @@ const setupSchema = zod.object({
   // False means a transaction reconciled in an earlier session was edited,
   // deleted, or un-reconciled afterwards: the books no longer agree with
   // the last statement that was reconciled.
-  beginningBalanceMatchesLastStatement: zod.boolean()
+  beginningBalanceMatchesLastStatement: zod.boolean(),
+  // A saved in-progress reconciliation ("Save for later"), if any -- the
+  // setup screen shows "Resume reconciling" instead of the empty form.
+  draft: zod.object({ statementEndingDate: zod.string(), statementEndingBalance: zod.number() }).nullable()
 });
 
 const setupRoute = createRoute({
@@ -498,6 +501,9 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
     `;
     const reconciliationId = (inserted as { id: string }).id;
 
+    // The in-progress draft (Save for later) is spent once the real thing is done.
+    await sql`delete from reconciliation_drafts where ledger_id = ${ledgerId} and account_id = ${accountId}`;
+
     // Snapshot each entry as it is reconciled (natural-balance effect and
     // date) so the discrepancy report can later tell what changed. Uses the
     // fresh entries: the adjustment transactions only exist there.
@@ -545,6 +551,13 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
           limit 1
         `
       : [];
+    const draftRows = ledgerId
+      ? await sql`
+          select statement_ending_date, statement_ending_balance from reconciliation_drafts
+          where ledger_id = ${ledgerId} and account_id = ${accountId} limit 1
+        `
+      : [];
+    const draft = draftRows[0] as { statement_ending_date: Date; statement_ending_balance: string } | undefined;
     const last = lastRows[0] as { id: string; statement_ending_date: Date; statement_ending_balance: string } | undefined;
     const lastEndingBalance = last ? Number(last.statement_ending_balance) : null;
 
@@ -555,7 +568,8 @@ export function reconciliationRoutes(app: OpenAPIHono): void {
         lastStatementEndingDate: last ? toDateOnly(last.statement_ending_date) : null,
         lastStatementEndingBalance: lastEndingBalance,
         lastReconciliationId: last?.id ?? null,
-        beginningBalanceMatchesLastStatement: lastEndingBalance === null || Math.abs(lastEndingBalance - beginningBalance) < 0.005
+        beginningBalanceMatchesLastStatement: lastEndingBalance === null || Math.abs(lastEndingBalance - beginningBalance) < 0.005,
+        draft: draft ? { statementEndingDate: toDateOnly(draft.statement_ending_date), statementEndingBalance: Number(draft.statement_ending_balance) } : null
       },
       200
     );

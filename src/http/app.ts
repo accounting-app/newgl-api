@@ -30,7 +30,8 @@ import {
   invoiceRoutes,
   estimateRoutes,
   employeeRoutes,
-  reconciliationRoutes
+  reconciliationRoutes,
+  reconciliationDraftRoutes
 } from "@/http/routes";
 
 // `defaultServices` is a test-mode escape hatch: existing tests and scripts
@@ -81,5 +82,6 @@ export function createApp(defaultServices?: ServiceContainer) {
   estimateRoutes(app);
   employeeRoutes(app);
   reconciliationRoutes(app);
+  reconciliationDraftRoutes(app);
   return app;
 }
