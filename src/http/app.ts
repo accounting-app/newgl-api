@@ -49,7 +49,7 @@ export function createApp(defaultServices?: ServiceContainer) {
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "X-Debug-Password", "Authorization"]
+      allowHeaders: ["Content-Type", "X-Debug-Password", "Authorization", "X-Confirm-Reconciled"]
     })
   );
   app.use("*", requestLogger());
