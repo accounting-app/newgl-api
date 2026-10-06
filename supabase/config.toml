@@ -243,6 +243,11 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Branded email templates (links point at our own /auth/confirm route).
+[auth.email.template.confirmation]
+subject = "Confirm your email for Simple"
+content_path = "./supabase/templates/confirmation.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"
