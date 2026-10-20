@@ -5,6 +5,8 @@ import { ValidationError } from "@/core/errors";
 import { getServices } from "@/http/context";
 import { guardReconciledEntry, guardReconciledTransaction } from "@/http/reconciled-guard";
 import {
+  batchDeleteRegisterEntriesInputSchema,
+  batchUpdateRegisterEntriesInputSchema,
   createTransactionInputSchema,
   errorResponseSchema,
   importTransactionsInputSchema,
@@ -150,6 +152,37 @@ const registerUpdateRoute = createRoute({
   }
 });
 
+// POST (not PATCH/DELETE with a body): these take a list of ids, and POST is
+// the verb every client/proxy handles a request body for. Static segment, so
+// it can't be mistaken for /api/register/{entryId}.
+const registerBatchUpdateRoute = createRoute({
+  method: "post",
+  path: "/api/register/batch-update",
+  request: {
+    body: { content: { "application/json": { schema: batchUpdateRegisterEntriesInputSchema } } }
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: zod.array(registerEntrySchema) } },
+      description: "Updated entries (all or none)"
+    }
+  }
+});
+
+const registerBatchDeleteRoute = createRoute({
+  method: "post",
+  path: "/api/register/batch-delete",
+  request: {
+    body: { content: { "application/json": { schema: batchDeleteRegisterEntriesInputSchema } } }
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: zod.array(registerEntrySchema) } },
+      description: "Deleted entries (all or none)"
+    }
+  }
+});
+
 const registerReconcileRoute = createRoute({
   method: "post",
   path: "/api/register/{entryId}/reconcile",
@@ -267,6 +300,21 @@ export function transactionRoutes(app: OpenAPIHono): void {
     await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.updateRegisterEntry(entryId, input);
     return context.json(entry, 200);
+  });
+
+  // No guardReconciledEntry here: a batch only ever accepts pending entries
+  // (the service rejects cleared/reconciled ones outright), so there's no
+  // "reconciled -- continue anyway?" case to confirm.
+  app.openapi(registerBatchUpdateRoute, async (context) => {
+    const { updates } = context.req.valid("json");
+    const entries = await getServices(context).registerService.batchUpdateRegisterEntries(updates);
+    return context.json(entries, 200);
+  });
+
+  app.openapi(registerBatchDeleteRoute, async (context) => {
+    const { entryIds } = context.req.valid("json");
+    const entries = await getServices(context).registerService.batchDeleteRegisterEntries(entryIds);
+    return context.json(entries, 200);
   });
 
   app.openapi(registerReconcileRoute, async (context) => {

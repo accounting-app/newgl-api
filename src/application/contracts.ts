@@ -62,8 +62,20 @@ export interface RegisterService {
       counterpartyAccountId?: string;
     }
   ): Promise<RegisterEntry>;
+  /** Several updates in one ledger mutation: all apply or none do (see RegisterServiceImpl). */
+  batchUpdateRegisterEntries(
+    updates: Array<
+      Pick<RegisterEntry, "date" | "refNumber" | "payee" | "memo"> & {
+        entryId: string;
+        reconcileStatus?: ReconcileStatus;
+        counterpartyAccountId?: string;
+      }
+    >
+  ): Promise<RegisterEntry[]>;
   setReconcileStatus(entryId: string, status: ReconcileStatus): Promise<RegisterEntry>;
   deleteRegisterEntry(entryId: string): Promise<RegisterEntry>;
+  /** Deletes several entries' transactions in one ledger mutation: all or nothing. */
+  batchDeleteRegisterEntries(entryIds: string[]): Promise<RegisterEntry[]>;
 }
 
 export interface LedgerRepository {
