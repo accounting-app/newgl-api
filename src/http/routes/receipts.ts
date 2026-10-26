@@ -7,6 +7,8 @@ import { getSql } from "@/infra/postgres/client";
 import { deleteReceiptObject, downloadReceiptObject, uploadReceiptObject } from "@/infra/supabase-storage/client";
 import { createId } from "@/shared/utils/id";
 
+const zoneSchema = zod.enum(["receipts", "forms", "bank"]);
+
 const receiptIdParam = zod.object({ receiptId: zod.string().uuid() });
 
 const receiptSchema = zod.object({
@@ -15,6 +17,7 @@ const receiptSchema = zod.object({
   fileSizeBytes: zod.number().int(),
   contentType: zod.string(),
   uploadedAt: zod.string(),
+  zone: zoneSchema,
   vendorId: zod.string().uuid().optional(),
   paymentAccountId: zod.string().optional(),
   categoryAccountId: zod.string().optional(),
@@ -51,6 +54,7 @@ type ReceiptRow = {
   tax_amount: string | null;
   note: string | null;
   linked_transaction_id: string | null;
+  zone: "receipts" | "forms" | "bank";
   uploaded_at: Date;
 };
 
@@ -61,6 +65,7 @@ function serialize(row: ReceiptRow) {
     fileSizeBytes: Number(row.file_size_bytes),
     contentType: row.content_type,
     uploadedAt: row.uploaded_at.toISOString(),
+    zone: row.zone,
     vendorId: row.vendor_id ?? undefined,
     paymentAccountId: row.payment_account_id ?? undefined,
     categoryAccountId: row.category_account_id ?? undefined,
@@ -82,8 +87,9 @@ const MAX_RECEIPT_SIZE_BYTES = 20 * 1024 * 1024; // 20MB -- generous for a photo
 const listReceiptsRoute = createRoute({
   method: "get",
   path: "/api/receipts",
+  request: { query: zod.object({ zone: zoneSchema.optional() }) },
   responses: {
-    200: { content: { "application/json": { schema: zod.array(receiptSchema) } }, description: "Every receipt for the caller's currently active company" }
+    200: { content: { "application/json": { schema: zod.array(receiptSchema) } }, description: "Every receipt for the caller's currently active company, or just one zone's when ?zone= is given" }
   }
 });
 
@@ -143,15 +149,17 @@ export function receiptRoutes(app: OpenAPIHono): void {
   app.openapi(listReceiptsRoute, async (context) => {
     const tenantId = getTenantId(context);
     const ledgerName = getLedgerName(context);
+    const { zone } = context.req.valid("query");
     const sql = getSql();
 
     const rows = await sql`
       select r.id, r.storage_path, r.file_name, r.file_size_bytes, r.content_type, r.vendor_id,
              r.payment_account_id, r.category_account_id, r.amount, r.tax_amount, r.note,
-             r.linked_transaction_id, r.uploaded_at
+             r.linked_transaction_id, r.zone, r.uploaded_at
       from receipts r
       join ledgers l on l.id = r.ledger_id
       where l.tenant_id = ${tenantId} and l.name = ${ledgerName}
+        and (${zone ?? null}::text is null or r.zone = ${zone ?? null})
       order by r.uploaded_at desc
     `;
 
@@ -185,6 +193,9 @@ export function receiptRoutes(app: OpenAPIHono): void {
     const taxAmount = asOptionalNumber(body.taxAmount);
     const note = asOptionalString(body.note);
     const linkedTransactionId = asOptionalString(body.linkedTransactionId);
+    const zoneParsed = zoneSchema.safeParse(asOptionalString(body.zone) ?? "receipts");
+    if (!zoneParsed.success) return context.json({ error: "zone must be one of receipts, forms, bank" }, 400);
+    const zone = zoneParsed.data;
 
     const ledgerRows = await sql`
       select id from ledgers where tenant_id = ${tenantId} and name = ${ledgerName} limit 1
@@ -208,15 +219,15 @@ export function receiptRoutes(app: OpenAPIHono): void {
     const [inserted] = await sql`
       insert into receipts (
         id, ledger_id, storage_path, file_name, file_size_bytes, content_type,
-        vendor_id, payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id
+        vendor_id, payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id, zone
       )
       values (
         ${id}, ${ledgerId}, ${storagePath}, ${file.name}, ${file.size}, ${file.type || "application/octet-stream"},
         ${vendorId ?? null}, ${paymentAccountId ?? null}, ${categoryAccountId ?? null},
-        ${amount ?? null}, ${taxAmount ?? null}, ${note ?? null}, ${linkedTransactionId ?? null}
+        ${amount ?? null}, ${taxAmount ?? null}, ${note ?? null}, ${linkedTransactionId ?? null}, ${zone}
       )
       returning id, storage_path, file_name, file_size_bytes, content_type, vendor_id,
-                payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id, uploaded_at
+                payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id, zone, uploaded_at
     `;
 
     return context.json(serialize(inserted as ReceiptRow), 200);
@@ -231,7 +242,7 @@ export function receiptRoutes(app: OpenAPIHono): void {
     const existingRows = await sql`
       select r.id, r.storage_path, r.file_name, r.file_size_bytes, r.content_type, r.vendor_id,
              r.payment_account_id, r.category_account_id, r.amount, r.tax_amount, r.note,
-             r.linked_transaction_id, r.uploaded_at
+             r.linked_transaction_id, r.zone, r.uploaded_at
       from receipts r
       join ledgers l on l.id = r.ledger_id
       where l.tenant_id = ${tenantId} and r.id = ${receiptId}
@@ -263,7 +274,7 @@ export function receiptRoutes(app: OpenAPIHono): void {
         linked_transaction_id = ${next.linkedTransactionId ?? null}
       where id = ${receiptId}
       returning id, storage_path, file_name, file_size_bytes, content_type, vendor_id,
-                payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id, uploaded_at
+                payment_account_id, category_account_id, amount, tax_amount, note, linked_transaction_id, zone, uploaded_at
     `;
 
     return context.json(serialize(updated as ReceiptRow), 200);
