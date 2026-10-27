@@ -23,3 +23,4 @@ export { estimateRoutes } from "@/http/routes/estimates";
 export { employeeRoutes } from "@/http/routes/employees";
 export { reconciliationRoutes } from "@/http/routes/reconciliations";
 export { reconciliationDraftRoutes } from "@/http/routes/reconciliation-drafts";
+export { recurringTemplateRoutes } from "@/http/routes/recurring-templates";

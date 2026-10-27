@@ -89,6 +89,29 @@ describe("Receipt routes (metadata + real file storage, scoped to the active com
     expect(list.map((r) => r.id)).toEqual([created.id]);
   });
 
+  test("each zone keeps its own list, and an unknown zone is rejected", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("zones");
+
+    const upload = async (zone?: string) => {
+      const res = await app.request("/api/receipts", { method: "POST", headers, body: receiptFormData(zone ? { zone } : {}) });
+      return { status: res.status, body: (await res.json()) as { id: string; zone: string } };
+    };
+    const inbox = await upload();
+    const form = await upload("forms");
+    const bank = await upload("bank");
+    expect(inbox.body.zone).toBe("receipts");
+    expect(form.body.zone).toBe("forms");
+    expect(bank.body.zone).toBe("bank");
+    expect((await upload("nope")).status).toBe(400);
+
+    const ids = async (query: string) => ((await (await app.request(`/api/receipts${query}`, { headers })).json()) as Array<{ id: string }>).map((r) => r.id);
+    expect(await ids("?zone=forms")).toEqual([form.body.id]);
+    expect(await ids("?zone=bank")).toEqual([bank.body.id]);
+    expect(await ids("?zone=receipts")).toEqual([inbox.body.id]);
+    expect((await ids("")).sort()).toEqual([inbox.body.id, form.body.id, bank.body.id].sort());
+  });
+
   test("upload rejects a request with no file", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("no-file");

@@ -318,6 +318,32 @@ export const updateRegisterEntryInputSchema = z.object({
   counterpartyAccountId: z.string().uuid().optional()
 });
 
+// Batch edit from the register (RightTool-style "Batch -> Edit"): each item is
+// a full single-entry update, so the caller decides every field's final value
+// (including "append to memo", "change year only", "sequential ref no."),
+// and the server applies them all-or-nothing. Amounts are deliberately not
+// part of a batch -- those are edited one transaction at a time.
+export const batchUpdateRegisterEntriesInputSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        entryId: z.string().uuid(),
+        date: z.string(),
+        refNumber: z.string().optional(),
+        payee: z.string().optional(),
+        memo: z.string().optional(),
+        reconcileStatus: reconcileStatusSchema.optional(),
+        counterpartyAccountId: z.string().uuid().optional()
+      })
+    )
+    .min(1)
+    .max(500)
+});
+
+export const batchDeleteRegisterEntriesInputSchema = z.object({
+  entryIds: z.array(z.string().uuid()).min(1).max(500)
+});
+
 export const setReconcileStatusInputSchema = z.object({
   status: reconcileStatusSchema
 });
