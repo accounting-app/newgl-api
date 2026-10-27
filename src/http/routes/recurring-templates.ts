@@ -101,10 +101,10 @@ type TemplateRow = {
 const COLUMNS = `id, name, kind, mode, days_in_advance, interval_unit, interval_every, on_day, on_weekday, on_month,
   start_date, end_type, end_date, end_after, occurrences, next_date, last_run, last_error, enabled, payload, form_state, created_at`;
 
-// Postgres `date` columns come back as JS Dates at local midnight of the
-// session time zone; format them from local parts so they round-trip.
-const day = (value: Date | null): string | undefined =>
-  value ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}` : undefined;
+// Postgres `date` columns come back from Bun as a Date at UTC midnight, so
+// read them back in UTC -- local-time parts would shift the day in any
+// server time zone west of Greenwich.
+const day = (value: Date | null): string | undefined => (value ? value.toISOString().slice(0, 10) : undefined);
 
 function serialize(row: TemplateRow) {
   return {
