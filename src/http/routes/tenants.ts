@@ -262,18 +262,31 @@ export function tenantRoutes(app: OpenAPIHono): void {
     const { companyName, industry, companySize, country, baseCurrency } = context.req.valid("json");
     const sql = getSql();
 
-    const [row] = await sql`
-      update tenants set
-        name = ${companyName},
-        industry = ${industry},
-        company_size = ${companySize},
-        country = ${country},
-        base_currency = ${baseCurrency},
-        onboarding_completed_at = now(),
-        updated_at = now()
-      where id = ${tenantId}
-      returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
-    `;
+    const row = await sql.begin(async (tx) => {
+      const [updated] = await tx`
+        update tenants set
+          name = ${companyName},
+          industry = ${industry},
+          company_size = ${companySize},
+          country = ${country},
+          base_currency = ${baseCurrency},
+          onboarding_completed_at = now(),
+          updated_at = now()
+        where id = ${tenantId}
+        returning id, name, plan_id, ai_enabled, industry, company_size, country, base_currency, onboarding_completed_at
+      `;
+
+      // The primary ledger's `name` stays the internal identifier (used in
+      // URLs, API paths and the company switcher's keys); `label` is its
+      // display name, so the company name typed in the wizard is what users
+      // actually see instead of "company".
+      await tx`
+        update ledgers set label = ${companyName}, updated_at = now()
+        where tenant_id = ${tenantId} and is_primary
+      `;
+
+      return updated;
+    });
     return context.json(toTenantResponse(row as TenantRow), 200);
   });
 }

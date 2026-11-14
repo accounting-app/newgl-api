@@ -248,7 +248,12 @@ describe("Phase 1: auth + tenancy", () => {
     expect(patchBody.baseCurrency).toBe("USD");
     expect(patchBody.onboardingCompletedAt).not.toBeNull();
 
-    const after = await app.request("/api/tenants/me", { headers: authHeaders });
+    const ledgers = await getSql()`
+      select label from ledgers where tenant_id = ${bootstrapBody.id} and is_primary
+    `;
+    expect((ledgers[0] as { label: string | null }).label).toBe("Acme Consulting");
+
+    const after =await app.request("/api/tenants/me", { headers: authHeaders });
     const afterBody = (await after.json()) as { onboardingCompletedAt: string | null };
     expect(afterBody.onboardingCompletedAt).not.toBeNull();
   });
