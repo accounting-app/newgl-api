@@ -103,7 +103,9 @@ export const auditLogEntrySchema = z.object({
 export const transactionPostingInputSchema = z.object({
   accountId: z.string().uuid(),
   type: postingEntryTypeSchema,
-  amount: z.number().min(0.01)
+  amount: z.number().min(0.01),
+  /** The form line's Description. */
+  description: z.string().optional()
 });
 
 export const transactionSchema = z.object({
@@ -117,6 +119,7 @@ export const transactionSchema = z.object({
   memo: z.string().optional(),
   payee: z.string().optional(),
   accountLabel: z.string().optional(),
+  paymentMethod: z.string().optional(),
   sourceAccountId: z.string().uuid().optional(),
   reconcileStatus: reconcileStatusSchema.optional(),
   periodId: z.string().optional(),
@@ -202,6 +205,8 @@ export type AccountHierarchy = Array<
   }
 >;
 
+export type UpdateTransactionInput = z.infer<typeof updateTransactionInputSchema>;
+
 export type CreateAccountInput = Pick<
   Account,
   "code" | "name" | "category" | "currency" | "openingBalance"
@@ -218,6 +223,7 @@ export type CreateTransactionInput = Pick<
   | "dueDate"
   | "referenceNumber"
   | "memo"
+  | "paymentMethod"
   | "payee"
   | "accountLabel"
   | "sourceAccountId"
@@ -257,10 +263,17 @@ export const createTransactionInputSchema = z.object({
   memo: z.string().optional(),
   payee: z.string().optional(),
   accountLabel: z.string().optional(),
+  paymentMethod: z.string().optional(),
   sourceAccountId: z.string().uuid().optional(),
   reconcileStatus: reconcileStatusSchema.optional(),
   postings: z.array(transactionPostingInputSchema).min(2)
 });
+
+/**
+ * Re-saving a transaction from its full form: every field and line is replaced.
+ * Type, status and reconcile mark are not editable here.
+ */
+export const updateTransactionInputSchema = createTransactionInputSchema.omit({ type: true, reconcileStatus: true });
 
 export const importTransactionCategorySplitSchema = z.object({
   accountId: z.string().uuid(),

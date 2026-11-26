@@ -143,7 +143,7 @@ function resolveSignedPostings(
   txn: ParsedTransaction,
   accountByPath: Map<string, AccountRecord>
 ): TransactionPostingInput[] {
-  type Row = { accountId: string; currency: string; signed: number | null; account: AccountRecord };
+  type Row = { accountId: string; currency: string; signed: number | null; account: AccountRecord; description?: string };
 
   const rows: Row[] = txn.postings.map((posting) => {
     const account = accountByPath.get(posting.account);
@@ -155,7 +155,8 @@ function resolveSignedPostings(
       accountId: account.id,
       currency,
       signed: posting.amount ?? null,
-      account
+      account,
+      description: metaString(posting.metadata, "description")
     };
   });
 
@@ -179,7 +180,8 @@ function resolveSignedPostings(
       return {
         accountId: row.accountId,
         type: converted.type,
-        amount: converted.amount
+        amount: converted.amount,
+        ...(row.description ? { description: row.description } : {})
       };
     })
     .filter((posting) => posting.amount > 0);
@@ -212,6 +214,7 @@ function parsedTransactionToDomain(
     memo: txn.narration,
     payee: txn.payee,
     accountLabel: metaString(txn.metadata, "account-label"),
+    paymentMethod: metaString(txn.metadata, "payment-method"),
     sourceAccountId: sourceAccount?.id,
     reconcileStatus: reconcileFromMeta ?? reconcileFromPosting,
     periodId: getPeriodIdForDate(txn.date),
@@ -325,6 +328,10 @@ function domainTransactionToParsed(
     ) {
       postingMeta.reconcile = transaction.reconcileStatus;
     }
+    // One line per metadata entry in a .bean file, so newlines are flattened.
+    if (posting.description?.trim()) {
+      postingMeta.description = posting.description.replace(/\s+/g, " ").trim();
+    }
     return {
       account: path,
       amount: signed,
@@ -350,6 +357,7 @@ function domainTransactionToParsed(
       status: transaction.status,
       ...(transaction.referenceNumber ? { ref: transaction.referenceNumber } : {}),
       ...(transaction.accountLabel ? { "account-label": transaction.accountLabel } : {}),
+      ...(transaction.paymentMethod ? { "payment-method": transaction.paymentMethod } : {}),
       ...(sourceAccount
         ? {
             "source-account-path":

@@ -15,7 +15,8 @@ import {
   setReconcileStatusInputSchema,
   transactionSchema,
   transactionStatusSchema,
-  updateRegisterEntryInputSchema
+  updateRegisterEntryInputSchema,
+  updateTransactionInputSchema
 } from "@/domain/models";
 
 const omitType = createTransactionInputSchema.omit({ type: true });
@@ -73,6 +74,20 @@ const transactionGetRoute = createRoute({
   request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Transaction" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "Not found" }
+  }
+});
+
+const transactionUpdateRoute = createRoute({
+  method: "put",
+  path: "/api/transactions/{transactionId}",
+  request: {
+    params: zod.object({ transactionId: zod.string().uuid() }),
+    body: { content: { "application/json": { schema: updateTransactionInputSchema } } }
+  },
+  responses: {
+    200: { content: { "application/json": { schema: transactionSchema } }, description: "Updated transaction" },
+    400: { content: { "application/json": { schema: errorResponseSchema } }, description: "Error" },
     404: { content: { "application/json": { schema: errorResponseSchema } }, description: "Not found" }
   }
 });
@@ -247,6 +262,14 @@ export function transactionRoutes(app: OpenAPIHono): void {
   app.openapi(transactionGetRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
     const transaction = await getServices(context).transactionService.getTransactionById(transactionId);
+    return context.json(transaction, 200);
+  });
+
+  app.openapi(transactionUpdateRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
+    const input = context.req.valid("json");
+    await guardReconciledTransaction(context, transactionId);
+    const transaction = await getServices(context).transactionService.updateTransaction(transactionId, input);
     return context.json(transaction, 200);
   });
 

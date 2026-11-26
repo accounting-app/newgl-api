@@ -32,6 +32,7 @@ export type ListTransactionsFilter = {
 export interface TransactionService {
   createTransaction(input: CreateTransactionInput): Promise<Transaction>;
   getTransactionById(id: string): Promise<Transaction>;
+  updateTransaction(id: string, input: import("@/domain/models").UpdateTransactionInput): Promise<Transaction>;
   listTransactions(filter?: ListTransactionsFilter): Promise<Transaction[]>;
   postTransaction(id: string): Promise<Transaction>;
   voidTransaction(id: string): Promise<Transaction>;
