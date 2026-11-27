@@ -1,8 +1,8 @@
 import { createRoute, z as zod } from "@hono/zod-openapi";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 
-import { ValidationError } from "@/core/errors";
 import { getServices } from "@/http/context";
+import { guardLinkedPaymentRows, guardLinkedPaymentUpdate, reopenPaidDocuments } from "@/http/linked-payments";
 import { guardReconciledEntry, guardReconciledTransaction } from "@/http/reconciled-guard";
 import {
   batchDeleteRegisterEntriesInputSchema,
@@ -16,7 +16,8 @@ import {
   setReconcileStatusInputSchema,
   transactionSchema,
   transactionStatusSchema,
-  updateRegisterEntryInputSchema
+  updateRegisterEntryInputSchema,
+  updateTransactionInputSchema
 } from "@/domain/models";
 
 const omitType = createTransactionInputSchema.omit({ type: true });
@@ -74,6 +75,20 @@ const transactionGetRoute = createRoute({
   request: { params: zod.object({ transactionId: zod.string().uuid() }) },
   responses: {
     200: { content: { "application/json": { schema: transactionSchema } }, description: "Transaction" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "Not found" }
+  }
+});
+
+const transactionUpdateRoute = createRoute({
+  method: "put",
+  path: "/api/transactions/{transactionId}",
+  request: {
+    params: zod.object({ transactionId: zod.string().uuid() }),
+    body: { content: { "application/json": { schema: updateTransactionInputSchema } } }
+  },
+  responses: {
+    200: { content: { "application/json": { schema: transactionSchema } }, description: "Updated transaction" },
+    400: { content: { "application/json": { schema: errorResponseSchema } }, description: "Error" },
     404: { content: { "application/json": { schema: errorResponseSchema } }, description: "Not found" }
   }
 });
@@ -251,6 +266,15 @@ export function transactionRoutes(app: OpenAPIHono): void {
     return context.json(transaction, 200);
   });
 
+  app.openapi(transactionUpdateRoute, async (context) => {
+    const { transactionId } = context.req.valid("param");
+    const input = context.req.valid("json");
+    await guardReconciledTransaction(context, transactionId);
+    await guardLinkedPaymentUpdate(context, transactionId, input.postings);
+    const transaction = await getServices(context).transactionService.updateTransaction(transactionId, input);
+    return context.json(transaction, 200);
+  });
+
   app.openapi(transactionPostRoute, async (context) => {
     const { transactionId } = context.req.valid("param");
     const transaction = await getServices(context).transactionService.postTransaction(transactionId);
@@ -261,6 +285,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
     const { transactionId } = context.req.valid("param");
     await guardReconciledTransaction(context, transactionId);
     const transaction = await getServices(context).transactionService.voidTransaction(transactionId);
+    await reopenPaidDocuments(context, [transactionId]);
     return context.json(transaction, 200);
   });
 
@@ -268,6 +293,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
     const { transactionId } = context.req.valid("param");
     await guardReconciledTransaction(context, transactionId);
     const transaction = await getServices(context).transactionService.reverseTransaction(transactionId);
+    await reopenPaidDocuments(context, [transactionId]);
     return context.json(transaction, 200);
   });
 
@@ -298,6 +324,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
     const { entryId } = context.req.valid("param");
     const input = context.req.valid("json");
     await guardReconciledEntry(context, entryId);
+    await guardLinkedPaymentRows(context, [{ entryId, ...input }]);
     const entry = await getServices(context).registerService.updateRegisterEntry(entryId, input);
     return context.json(entry, 200);
   });
@@ -307,6 +334,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
   // "reconciled -- continue anyway?" case to confirm.
   app.openapi(registerBatchUpdateRoute, async (context) => {
     const { updates } = context.req.valid("json");
+    await guardLinkedPaymentRows(context, updates);
     const entries = await getServices(context).registerService.batchUpdateRegisterEntries(updates);
     return context.json(entries, 200);
   });
@@ -314,19 +342,16 @@ export function transactionRoutes(app: OpenAPIHono): void {
   app.openapi(registerBatchDeleteRoute, async (context) => {
     const { entryIds } = context.req.valid("json");
     const entries = await getServices(context).registerService.batchDeleteRegisterEntries(entryIds);
+    await reopenPaidDocuments(context, entries.map((entry) => entry.transactionId));
     return context.json(entries, 200);
   });
 
   app.openapi(registerReconcileRoute, async (context) => {
     const { entryId } = context.req.valid("param");
     const { status } = context.req.valid("json");
-    // "R" only comes from finishing a reconciliation (that's what records the
-    // statement, its history and its report); hand-marking it would leave
-    // the books "reconciled" against no statement at all. Un-reconciling an
-    // existing R entry is a warned change like any other edit to one.
-    if (status === "R") {
-      throw new ValidationError("Reconciled is set by finishing a reconciliation on the Reconcile screen.");
-    }
+    // "R" can be set by hand, as in QBO and RightTool (the screen warns first).
+    // Such an entry counts toward the reconciled balance although no statement
+    // records it. Changing an existing R entry stays a confirmed change.
     await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.setReconcileStatus(entryId, status);
     return context.json(entry, 200);
@@ -336,6 +361,7 @@ export function transactionRoutes(app: OpenAPIHono): void {
     const { entryId } = context.req.valid("param");
     await guardReconciledEntry(context, entryId);
     const entry = await getServices(context).registerService.deleteRegisterEntry(entryId);
+    await reopenPaidDocuments(context, [entry.transactionId]);
     return context.json(entry, 200);
   });
 

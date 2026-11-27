@@ -31,6 +31,27 @@ function metaString(metadata: Record<string, unknown>, key: string): string | un
   return typeof value === "string" ? value : undefined;
 }
 
+// Form-only fields live in "x-<name>" metadata. A .bean metadata value is one
+// line, so newlines are stored as the SYMBOL FOR NEWLINE and restored on read.
+const DETAIL_PREFIX = "x-";
+const encodeLines = (value: string) => value.replace(/\r?\n/g, "\u2424");
+const decodeLines = (value: string) => value.replace(/\u2424/g, "\n");
+
+function readDetails(metadata: Record<string, unknown>): Record<string, string> | undefined {
+  const entries = Object.entries(metadata)
+    .filter(([key]) => key.startsWith(DETAIL_PREFIX))
+    .map(([key, value]) => [key.slice(DETAIL_PREFIX.length), decodeLines(String(value))]);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function detailMetadata(details: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(details ?? {})
+      .filter(([, value]) => value !== "")
+      .map(([key, value]) => [DETAIL_PREFIX + key, encodeLines(value)])
+  );
+}
+
 function signedToPosting(
   account: Account,
   signedAmount: number
@@ -143,7 +164,7 @@ function resolveSignedPostings(
   txn: ParsedTransaction,
   accountByPath: Map<string, AccountRecord>
 ): TransactionPostingInput[] {
-  type Row = { accountId: string; currency: string; signed: number | null; account: AccountRecord };
+  type Row = { accountId: string; currency: string; signed: number | null; account: AccountRecord; description?: string; details?: Record<string, string> };
 
   const rows: Row[] = txn.postings.map((posting) => {
     const account = accountByPath.get(posting.account);
@@ -155,7 +176,9 @@ function resolveSignedPostings(
       accountId: account.id,
       currency,
       signed: posting.amount ?? null,
-      account
+      account,
+      description: metaString(posting.metadata, "description"),
+      details: readDetails(posting.metadata)
     };
   });
 
@@ -179,7 +202,9 @@ function resolveSignedPostings(
       return {
         accountId: row.accountId,
         type: converted.type,
-        amount: converted.amount
+        amount: converted.amount,
+        ...(row.description ? { description: decodeLines(row.description) } : {}),
+        ...(row.details ? { details: row.details } : {})
       };
     })
     .filter((posting) => posting.amount > 0);
@@ -212,6 +237,8 @@ function parsedTransactionToDomain(
     memo: txn.narration,
     payee: txn.payee,
     accountLabel: metaString(txn.metadata, "account-label"),
+    paymentMethod: metaString(txn.metadata, "payment-method"),
+    details: readDetails(txn.metadata),
     sourceAccountId: sourceAccount?.id,
     reconcileStatus: reconcileFromMeta ?? reconcileFromPosting,
     periodId: getPeriodIdForDate(txn.date),
@@ -325,6 +352,10 @@ function domainTransactionToParsed(
     ) {
       postingMeta.reconcile = transaction.reconcileStatus;
     }
+    if (posting.description?.trim()) {
+      postingMeta.description = encodeLines(posting.description.trim());
+    }
+    Object.assign(postingMeta, detailMetadata(posting.details));
     return {
       account: path,
       amount: signed,
@@ -350,6 +381,8 @@ function domainTransactionToParsed(
       status: transaction.status,
       ...(transaction.referenceNumber ? { ref: transaction.referenceNumber } : {}),
       ...(transaction.accountLabel ? { "account-label": transaction.accountLabel } : {}),
+      ...(transaction.paymentMethod ? { "payment-method": transaction.paymentMethod } : {}),
+      ...detailMetadata(transaction.details),
       ...(sourceAccount
         ? {
             "source-account-path":

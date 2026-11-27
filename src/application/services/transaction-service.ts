@@ -13,7 +13,8 @@ import type {
   ImportTransactionsInput,
   ImportTransactionsResult,
   Transaction,
-  TransactionPostingInput
+  TransactionPostingInput,
+  UpdateTransactionInput
 } from "@/domain/models";
 import { createId } from "@/shared/utils/id";
 import { nowIso, todayIsoDate } from "@/shared/utils/date";
@@ -55,6 +56,8 @@ export class TransactionServiceImpl implements TransactionService {
         memo: input.memo,
         payee: input.payee,
         accountLabel: input.accountLabel,
+        paymentMethod: input.paymentMethod,
+        details: input.details,
         sourceAccountId: input.sourceAccountId,
         reconcileStatus: input.reconcileStatus,
         periodId: getPeriodIdForDate(input.transactionDate),
@@ -87,6 +90,46 @@ export class TransactionServiceImpl implements TransactionService {
       if (filter.status && transaction.status !== filter.status) return false;
       if (filter.sourceAccountId && transaction.sourceAccountId !== filter.sourceAccountId) return false;
       return true;
+    });
+  }
+
+  async updateTransaction(id: string, input: UpdateTransactionInput): Promise<Transaction> {
+    return this.repository.mutate(async (store) => {
+      const transaction = store.transactions.find((item) => item.id === id);
+      if (!transaction) {
+        throw new NotFoundError(`Transaction ${id} not found`);
+      }
+      if (transaction.status !== "POSTED" && transaction.status !== "DRAFT") {
+        throw new ValidationError(`Transaction ${id} is ${transaction.status} and cannot be edited.`);
+      }
+      if (transaction.reversedAt) {
+        throw new ValidationError(`Transaction ${id} has been reversed and cannot be edited.`);
+      }
+      validateDoubleEntry(input.postings);
+      if (new Set(input.postings.map((posting) => posting.accountId)).size < 2) {
+        throw new ValidationError("A transaction must affect at least two different accounts.");
+      }
+      validateTransactionPeriod(input.transactionDate);
+      ensureAccountsActive(store, { ...transaction, postings: input.postings });
+
+      const previousAccountIds = transaction.postings.map((posting) => posting.accountId);
+      transaction.transactionDate = input.transactionDate;
+      transaction.dueDate = input.dueDate;
+      transaction.referenceNumber = input.referenceNumber;
+      transaction.memo = input.memo;
+      transaction.payee = input.payee;
+      transaction.accountLabel = input.accountLabel;
+      transaction.paymentMethod = input.paymentMethod;
+      transaction.details = input.details;
+      transaction.sourceAccountId = input.sourceAccountId ?? transaction.sourceAccountId;
+      transaction.periodId = getPeriodIdForDate(input.transactionDate);
+      transaction.postings = input.postings;
+      transaction.updatedAt = nowIso();
+      transaction.auditLog = [...(transaction.auditLog ?? []), auditEntry("updated")];
+
+      rebuildDerivedViews(store);
+      updateAccountBalances(store, [...new Set([...previousAccountIds, ...input.postings.map((posting) => posting.accountId)])]);
+      return transaction;
     });
   }
 

@@ -554,7 +554,7 @@ describe("Reconciliation routes", () => {
     expect(issues[0]).toMatchObject({ change: "DELETED", reconciledAmount: 500, transactionId: txnId });
   });
 
-  test("the register cannot hand-mark R, and un-reconciling an R entry needs confirmation", async () => {
+  test("the register can hand-mark R, and un-reconciling an R entry needs confirmation", async () => {
     if (!reachable) return;
     const { headers } = await bootstrapUser("register-r");
     const bank = await findAccount(headers, "BANK");
@@ -572,7 +572,9 @@ describe("Reconciliation routes", () => {
         body: JSON.stringify({ status })
       });
 
-    expect((await setStatus("R")).status).toBe(400);
+    expect((await setStatus("R")).status).toBe(200);
+    expect((await setStatus("")).status).toBe(409);
+    expect((await setStatus("", { "X-Confirm-Reconciled": "true" })).status).toBe(200);
     expect((await setStatus("C")).status).toBe(200);
 
     await finish(headers, bank.id, { statementStartDate: "2026-01-01", statementEndingDate: "2026-01-31", statementEndingBalance: 75, clearedTransactionIds: [txnId] });
