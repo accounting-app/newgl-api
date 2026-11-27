@@ -57,6 +57,7 @@ export class TransactionServiceImpl implements TransactionService {
         payee: input.payee,
         accountLabel: input.accountLabel,
         paymentMethod: input.paymentMethod,
+        details: input.details,
         sourceAccountId: input.sourceAccountId,
         reconcileStatus: input.reconcileStatus,
         periodId: getPeriodIdForDate(input.transactionDate),
@@ -119,6 +120,7 @@ export class TransactionServiceImpl implements TransactionService {
       transaction.payee = input.payee;
       transaction.accountLabel = input.accountLabel;
       transaction.paymentMethod = input.paymentMethod;
+      transaction.details = input.details;
       transaction.sourceAccountId = input.sourceAccountId ?? transaction.sourceAccountId;
       transaction.periodId = getPeriodIdForDate(input.transactionDate);
       transaction.postings = input.postings;

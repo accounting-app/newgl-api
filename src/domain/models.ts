@@ -105,7 +105,9 @@ export const transactionPostingInputSchema = z.object({
   type: postingEntryTypeSchema,
   amount: z.number().min(0.01),
   /** The form line's Description. */
-  description: z.string().optional()
+  description: z.string().optional(),
+  /** Other per-line form fields the ledger doesn't interpret (name, qty, rate...). */
+  details: z.record(z.string().regex(/^[A-Za-z][\w-]*$/), z.string()).optional()
 });
 
 export const transactionSchema = z.object({
@@ -120,6 +122,8 @@ export const transactionSchema = z.object({
   payee: z.string().optional(),
   accountLabel: z.string().optional(),
   paymentMethod: z.string().optional(),
+  /** Other form fields the ledger doesn't interpret (email, mailing address...). */
+  details: z.record(z.string().regex(/^[A-Za-z][\w-]*$/), z.string()).optional(),
   sourceAccountId: z.string().uuid().optional(),
   reconcileStatus: reconcileStatusSchema.optional(),
   periodId: z.string().optional(),
@@ -224,6 +228,7 @@ export type CreateTransactionInput = Pick<
   | "referenceNumber"
   | "memo"
   | "paymentMethod"
+  | "details"
   | "payee"
   | "accountLabel"
   | "sourceAccountId"
@@ -264,6 +269,7 @@ export const createTransactionInputSchema = z.object({
   payee: z.string().optional(),
   accountLabel: z.string().optional(),
   paymentMethod: z.string().optional(),
+  details: z.record(z.string().regex(/^[A-Za-z][\w-]*$/), z.string()).optional(),
   sourceAccountId: z.string().uuid().optional(),
   reconcileStatus: reconcileStatusSchema.optional(),
   postings: z.array(transactionPostingInputSchema).min(2)

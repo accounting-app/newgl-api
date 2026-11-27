@@ -27,6 +27,19 @@ export type RegisterEntryUpdateInput = Pick<RegisterEntry, "date" | "refNumber" 
   counterpartyAccountId?: string;
 };
 
+function isSplit(store: LedgerStore, entry: RegisterEntry): boolean {
+  return (store.transactions.find((item) => item.id === entry.transactionId)?.postings.length ?? 0) > 2;
+}
+
+/** True when the row's payment/deposit no longer matches what the entry has (absent amounts mean "unchanged"). */
+function amountDiffers(entry: RegisterEntry, input: RegisterEntryUpdateInput): boolean {
+  const payment = input.payment ?? 0;
+  const deposit = input.deposit ?? 0;
+  if (payment <= 0 && deposit <= 0) return false;
+  const cents = (value: number) => Math.round(value * 100);
+  return cents(payment) !== cents(entry.payment ?? 0) || cents(deposit) !== cents(entry.deposit ?? 0);
+}
+
 /**
  * Everything an update can reject, checked WITHOUT touching the store. Kept
  * separate from applyRegisterEntryUpdate so a batch can validate every entry
@@ -49,6 +62,10 @@ function validateRegisterEntryUpdate(
     throw new ValidationError("Register entry cannot contain both a payment and a deposit.");
   }
   validateTransactionPeriod(input.date);
+  // A split has several lines whose amounts can't be derived from this one row.
+  if (isSplit(store, entry) && amountDiffers(entry, input)) {
+    throw new ValidationError("This is a split transaction. Change its amounts with Edit, in the full form.");
+  }
   if (input.counterpartyAccountId) {
     if (input.counterpartyAccountId === entry.accountId) {
       throw new ValidationError("An account cannot be its own offset account.");
@@ -65,7 +82,8 @@ function applyRegisterEntryUpdate(store: LedgerStore, entry: RegisterEntry, inpu
   const newAmount = newDeposit ?? newPayment ?? 0;
   const thisAccountSide = postingSideFromRegisterAmounts({ deposit: newDeposit, payment: newPayment });
   const counterpartySide: PostingEntryType = thisAccountSide === "DEBIT" ? "CREDIT" : "DEBIT";
-  const amountChanged = newAmount > 0;
+  // Split lines keep their own amounts; validation already refused a change.
+  const amountChanged = newAmount > 0 && !isSplit(store, entry);
 
   entry.date = input.date;
   entry.refNumber = input.refNumber;
@@ -134,7 +152,9 @@ function applyRegisterEntryUpdate(store: LedgerStore, entry: RegisterEntry, inpu
 
   if (input.counterpartyAccountId && transaction) {
     const counterpartyPostings = transaction.postings.filter((posting) => posting.accountId !== entry.accountId);
-    const currentCounterpartyId = counterpartyPostings.length === 1 ? counterpartyPostings[0].accountId : undefined;
+    // Several lines to one account still count as a single counterparty.
+    const counterpartyIds = [...new Set(counterpartyPostings.map((posting) => posting.accountId))];
+    const currentCounterpartyId = counterpartyIds.length === 1 ? counterpartyIds[0] : undefined;
 
     if (currentCounterpartyId && currentCounterpartyId !== input.counterpartyAccountId) {
       const newCounterparty = requireAccount(store, input.counterpartyAccountId);
