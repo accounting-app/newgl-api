@@ -409,4 +409,41 @@ describe("Invoice routes (metadata + real ledger postings, scoped to the active 
     const primaryList = (await (await app.request("/api/invoices", { headers })).json()) as Array<{ amount: number }>;
     expect(primaryList.map((i) => i.amount)).toEqual([10]);
   });
+
+  test("a linked payment keeps its amount, and deleting it reopens the invoice", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("linked");
+    const json = { ...headers, "Content-Type": "application/json" };
+    const customerId = await createCustomer(headers, "Jane Smith");
+    const bank = (await findAccount(headers, "BANK"))!;
+    const created = (await (
+      await app.request("/api/invoices", {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ customerId, invoiceDate: "2026-03-01", dueDate: "2026-03-31", amount: 500 })
+      })
+    ).json()) as { id: string };
+    const paid = (await (
+      await app.request(`/api/invoices/${created.id}/pay`, {
+        method: "POST",
+        headers: json,
+        body: JSON.stringify({ depositAccountId: bank.id, paymentDate: "2026-03-05" })
+      })
+    ).json()) as { paymentTransactionId: string };
+
+    const entries = (await (await app.request(`/api/accounts/${bank.id}/register`, { headers })).json()) as Array<{ id: string; transactionId: string }>;
+    const entry = entries.find((item) => item.transactionId === paid.paymentTransactionId)!;
+    const changed = await app.request(`/api/register/${entry.id}`, {
+      method: "PATCH",
+      headers: json,
+      body: JSON.stringify({ date: "2026-03-05", deposit: 400 })
+    });
+    expect(changed.status).toBe(400);
+
+    const deleted = await app.request(`/api/register/${entry.id}`, { method: "DELETE", headers });
+    expect(deleted.status).toBe(200);
+    const invoices = (await (await app.request("/api/invoices", { headers })).json()) as Array<{ status: string; paymentTransactionId?: string }>;
+    expect(invoices[0]!.status).toBe("OPEN");
+    expect(invoices[0]!.paymentTransactionId).toBeUndefined();
+  });
 });
