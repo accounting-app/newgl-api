@@ -5,6 +5,7 @@ import { getLedgerName, getServices, getTenantId } from "@/http/context";
 import { errorResponseSchema } from "@/domain/models";
 import type { AccountService, TransactionService } from "@/application/contracts";
 import { getSql } from "@/infra/postgres/client";
+import { applyPayment, applyPaymentInputSchema, hasPayments, openBalanceCents, paymentFieldsSchema, recordNewPayment, withPayments } from "@/http/document-payments";
 
 const invoiceIdParam = zod.object({ invoiceId: zod.string().uuid() });
 
@@ -20,7 +21,8 @@ const invoiceSchema = zod.object({
   status: zod.enum(["DRAFT", "OPEN", "PAID"]),
   postedTransactionId: zod.string().optional(),
   paymentTransactionId: zod.string().optional(),
-  createdAt: zod.string()
+  createdAt: zod.string(),
+  ...paymentFieldsSchema
 });
 
 const createInvoiceInputSchema = zod.object({
@@ -45,7 +47,9 @@ const updateInvoiceInputSchema = zod.object({
 
 const payInvoiceInputSchema = zod.object({
   depositAccountId: zod.string().min(1),
-  paymentDate: zod.string().min(1).optional()
+  paymentDate: zod.string().min(1).optional(),
+  /** Left out, the whole open balance is paid. */
+  amount: zod.number().positive().optional()
 });
 
 type InvoiceRow = {
@@ -182,6 +186,18 @@ const payInvoiceRoute = createRoute({
   }
 });
 
+const applyInvoicePaymentRoute = createRoute({
+  method: "post",
+  path: "/api/invoices/{invoiceId}/apply",
+  request: { params: invoiceIdParam, body: { content: { "application/json": { schema: applyPaymentInputSchema } }, required: true } },
+  responses: {
+    200: { content: { "application/json": { schema: invoiceSchema } }, description: "The invoice with the payment applied" },
+    400: { content: { "application/json": { schema: errorResponseSchema } }, description: "The payment can't cover that amount" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such invoice for this company" },
+    409: { content: { "application/json": { schema: errorResponseSchema } }, description: "This invoice isn't open" }
+  }
+});
+
 const deleteInvoiceRoute = createRoute({
   method: "delete",
   path: "/api/invoices/{invoiceId}",
@@ -215,7 +231,7 @@ export function invoiceRoutes(app: OpenAPIHono): void {
       order by i.invoice_date desc, i.created_at desc
     `;
 
-    return context.json(rows.map((row: unknown) => serialize(row as InvoiceRow)), 200);
+    return context.json(await withPayments("invoice", rows.map((row: unknown) => serialize(row as InvoiceRow))), 200);
   });
 
   app.openapi(createInvoiceRoute, async (context) => {
@@ -285,7 +301,7 @@ export function invoiceRoutes(app: OpenAPIHono): void {
                 posted_transaction_id, payment_transaction_id, created_at
     `;
 
-    return context.json(serialize(inserted as InvoiceRow), 200);
+    return context.json((await withPayments("invoice", [serialize(inserted as InvoiceRow)]))[0]!, 200);
   });
 
   app.openapi(updateInvoiceRoute, async (context) => {
@@ -307,8 +323,8 @@ export function invoiceRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No invoice '${invoiceId}' for this company` }, 404);
     }
     const current = existingRows[0] as InvoiceRow;
-    if (current.status === "PAID") {
-      return context.json({ error: "This invoice is already paid and can no longer be edited" }, 409);
+    if (current.status === "PAID" || (await hasPayments("invoice", invoiceId))) {
+      return context.json({ error: "This invoice has payments and can no longer be edited" }, 409);
     }
 
     const next = {
@@ -370,13 +386,13 @@ export function invoiceRoutes(app: OpenAPIHono): void {
                 posted_transaction_id, payment_transaction_id, created_at
     `;
 
-    return context.json(serialize(updated as InvoiceRow), 200);
+    return context.json((await withPayments("invoice", [serialize(updated as InvoiceRow)]))[0]!, 200);
   });
 
   app.openapi(payInvoiceRoute, async (context) => {
     const tenantId = getTenantId(context);
     const { invoiceId } = context.req.valid("param");
-    const { depositAccountId, paymentDate } = context.req.valid("json");
+    const { depositAccountId, paymentDate, amount } = context.req.valid("json");
     const sql = getSql();
     const { accountService, transactionService } = getServices(context);
 
@@ -396,6 +412,12 @@ export function invoiceRoutes(app: OpenAPIHono): void {
       return context.json({ error: `This invoice is ${current.status.toLowerCase()}, not open` }, 409);
     }
 
+    const open = await openBalanceCents("invoice", invoiceId, current.amount);
+    const paying = amount === undefined ? open / 100 : amount;
+    if (Math.round(paying * 100) > open) {
+      return context.json({ error: `That's more than the invoice's open balance of ${(open / 100).toFixed(2)}.` }, 400);
+    }
+
     let paymentTransactionId: string;
     try {
       const arAccountId = await findOrCreateAccountsReceivableAccount(accountService);
@@ -408,8 +430,8 @@ export function invoiceRoutes(app: OpenAPIHono): void {
         payee: customerName,
         referenceNumber: current.invoice_number ?? undefined,
         postings: [
-          { accountId: depositAccountId, type: "DEBIT", amount: Number(current.amount) },
-          { accountId: arAccountId, type: "CREDIT", amount: Number(current.amount) }
+          { accountId: depositAccountId, type: "DEBIT", amount: paying },
+          { accountId: arAccountId, type: "CREDIT", amount: paying }
         ]
       });
       paymentTransactionId = posted.id;
@@ -418,14 +440,24 @@ export function invoiceRoutes(app: OpenAPIHono): void {
       return context.json({ error: message }, 400);
     }
 
+    await recordNewPayment(context, "invoice", invoiceId, paymentTransactionId, paying);
     const [updated] = await sql`
-      update invoices set status = 'PAID', payment_transaction_id = ${paymentTransactionId}, updated_at = now()
-      where id = ${invoiceId}
-      returning id, customer_id, product_service_id, invoice_number, invoice_date, due_date, amount, memo, status,
-                posted_transaction_id, payment_transaction_id, created_at
+      select id, customer_id, product_service_id, invoice_number, invoice_date, due_date, amount, memo, status,
+             posted_transaction_id, payment_transaction_id, created_at
+      from invoices where id = ${invoiceId}
     `;
 
-    return context.json(serialize(updated as InvoiceRow), 200);
+    return context.json((await withPayments("invoice", [serialize(updated as InvoiceRow)]))[0]!, 200);
+  });
+
+  app.openapi(applyInvoicePaymentRoute, async (context) => {
+    const { invoiceId } = context.req.valid("param");
+    await applyPayment(context, "invoice", invoiceId, context.req.valid("json"));
+    const [updated] = await getSql()`
+      select id, customer_id, product_service_id, invoice_number, invoice_date, due_date, amount, memo, status, posted_transaction_id, payment_transaction_id, created_at
+      from invoices where id = ${invoiceId}
+    `;
+    return context.json((await withPayments("invoice", [serialize(updated as InvoiceRow)]))[0]!, 200);
   });
 
   app.openapi(deleteInvoiceRoute, async (context) => {
@@ -445,8 +477,8 @@ export function invoiceRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No invoice '${invoiceId}' for this company` }, 404);
     }
     const current = existingRows[0] as { id: string; status: "DRAFT" | "OPEN" | "PAID"; posted_transaction_id: string | null };
-    if (current.status === "PAID") {
-      return context.json({ error: "This invoice is already paid -- unwind the payment before deleting" }, 409);
+    if (current.status === "PAID" || (await hasPayments("invoice", invoiceId))) {
+      return context.json({ error: "This invoice has payments -- delete them before deleting it" }, 409);
     }
 
     if (current.posted_transaction_id) {

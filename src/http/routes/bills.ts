@@ -5,6 +5,7 @@ import { getLedgerName, getServices, getTenantId } from "@/http/context";
 import { errorResponseSchema } from "@/domain/models";
 import type { AccountService, TransactionService } from "@/application/contracts";
 import { getSql } from "@/infra/postgres/client";
+import { applyPayment, applyPaymentInputSchema, hasPayments, openBalanceCents, paymentFieldsSchema, recordNewPayment, withPayments } from "@/http/document-payments";
 
 const billIdParam = zod.object({ billId: zod.string().uuid() });
 
@@ -20,7 +21,8 @@ const billSchema = zod.object({
   status: zod.enum(["DRAFT", "OPEN", "PAID"]),
   postedTransactionId: zod.string().optional(),
   paymentTransactionId: zod.string().optional(),
-  createdAt: zod.string()
+  createdAt: zod.string(),
+  ...paymentFieldsSchema
 });
 
 const createBillInputSchema = zod.object({
@@ -45,7 +47,9 @@ const updateBillInputSchema = zod.object({
 
 const payBillInputSchema = zod.object({
   paymentAccountId: zod.string().min(1),
-  paymentDate: zod.string().min(1).optional()
+  paymentDate: zod.string().min(1).optional(),
+  /** Left out, the whole open balance is paid. */
+  amount: zod.number().positive().optional()
 });
 
 type BillRow = {
@@ -163,6 +167,18 @@ const payBillRoute = createRoute({
   }
 });
 
+const applyBillPaymentRoute = createRoute({
+  method: "post",
+  path: "/api/bills/{billId}/apply",
+  request: { params: billIdParam, body: { content: { "application/json": { schema: applyPaymentInputSchema } }, required: true } },
+  responses: {
+    200: { content: { "application/json": { schema: billSchema } }, description: "The bill with the payment applied" },
+    400: { content: { "application/json": { schema: errorResponseSchema } }, description: "The payment can't cover that amount" },
+    404: { content: { "application/json": { schema: errorResponseSchema } }, description: "No such bill for this company" },
+    409: { content: { "application/json": { schema: errorResponseSchema } }, description: "This bill isn't open" }
+  }
+});
+
 const deleteBillRoute = createRoute({
   method: "delete",
   path: "/api/bills/{billId}",
@@ -198,7 +214,7 @@ export function billRoutes(app: OpenAPIHono): void {
       order by b.bill_date desc, b.created_at desc
     `;
 
-    return context.json(rows.map((row: unknown) => serialize(row as BillRow)), 200);
+    return context.json(await withPayments("bill", rows.map((row: unknown) => serialize(row as BillRow))), 200);
   });
 
   app.openapi(createBillRoute, async (context) => {
@@ -253,7 +269,7 @@ export function billRoutes(app: OpenAPIHono): void {
                 posted_transaction_id, payment_transaction_id, created_at
     `;
 
-    return context.json(serialize(inserted as BillRow), 200);
+    return context.json((await withPayments("bill", [serialize(inserted as BillRow)]))[0]!, 200);
   });
 
   app.openapi(updateBillRoute, async (context) => {
@@ -275,8 +291,8 @@ export function billRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No bill '${billId}' for this company` }, 404);
     }
     const current = existingRows[0] as BillRow;
-    if (current.status === "PAID") {
-      return context.json({ error: "This bill is already paid and can no longer be edited" }, 409);
+    if (current.status === "PAID" || (await hasPayments("bill", billId))) {
+      return context.json({ error: "This bill has payments and can no longer be edited" }, 409);
     }
 
     const next = {
@@ -338,13 +354,13 @@ export function billRoutes(app: OpenAPIHono): void {
                 posted_transaction_id, payment_transaction_id, created_at
     `;
 
-    return context.json(serialize(updated as BillRow), 200);
+    return context.json((await withPayments("bill", [serialize(updated as BillRow)]))[0]!, 200);
   });
 
   app.openapi(payBillRoute, async (context) => {
     const tenantId = getTenantId(context);
     const { billId } = context.req.valid("param");
-    const { paymentAccountId, paymentDate } = context.req.valid("json");
+    const { paymentAccountId, paymentDate, amount } = context.req.valid("json");
     const sql = getSql();
     const { accountService, transactionService } = getServices(context);
 
@@ -364,6 +380,12 @@ export function billRoutes(app: OpenAPIHono): void {
       return context.json({ error: `This bill is ${current.status.toLowerCase()}, not open` }, 409);
     }
 
+    const open = await openBalanceCents("bill", billId, current.amount);
+    const paying = amount === undefined ? open / 100 : amount;
+    if (Math.round(paying * 100) > open) {
+      return context.json({ error: `That's more than the bill's open balance of ${(open / 100).toFixed(2)}.` }, 400);
+    }
+
     let paymentTransactionId: string;
     try {
       const apAccountId = await findOrCreateAccountsPayableAccount(accountService);
@@ -376,8 +398,8 @@ export function billRoutes(app: OpenAPIHono): void {
         payee: vendorName,
         referenceNumber: current.bill_number ?? undefined,
         postings: [
-          { accountId: apAccountId, type: "DEBIT", amount: Number(current.amount) },
-          { accountId: paymentAccountId, type: "CREDIT", amount: Number(current.amount) }
+          { accountId: apAccountId, type: "DEBIT", amount: paying },
+          { accountId: paymentAccountId, type: "CREDIT", amount: paying }
         ]
       });
       paymentTransactionId = posted.id;
@@ -386,14 +408,24 @@ export function billRoutes(app: OpenAPIHono): void {
       return context.json({ error: message }, 400);
     }
 
+    await recordNewPayment(context, "bill", billId, paymentTransactionId, paying);
     const [updated] = await sql`
-      update bills set status = 'PAID', payment_transaction_id = ${paymentTransactionId}, updated_at = now()
-      where id = ${billId}
-      returning id, vendor_id, bill_number, bill_date, due_date, amount, category_account_id, memo, status,
-                posted_transaction_id, payment_transaction_id, created_at
+      select id, vendor_id, bill_number, bill_date, due_date, amount, category_account_id, memo, status,
+             posted_transaction_id, payment_transaction_id, created_at
+      from bills where id = ${billId}
     `;
 
-    return context.json(serialize(updated as BillRow), 200);
+    return context.json((await withPayments("bill", [serialize(updated as BillRow)]))[0]!, 200);
+  });
+
+  app.openapi(applyBillPaymentRoute, async (context) => {
+    const { billId } = context.req.valid("param");
+    await applyPayment(context, "bill", billId, context.req.valid("json"));
+    const [updated] = await getSql()`
+      select id, vendor_id, bill_number, bill_date, due_date, amount, category_account_id, memo, status, posted_transaction_id, payment_transaction_id, created_at
+      from bills where id = ${billId}
+    `;
+    return context.json((await withPayments("bill", [serialize(updated as BillRow)]))[0]!, 200);
   });
 
   app.openapi(deleteBillRoute, async (context) => {
@@ -413,8 +445,8 @@ export function billRoutes(app: OpenAPIHono): void {
       return context.json({ error: `No bill '${billId}' for this company` }, 404);
     }
     const current = existingRows[0] as { id: string; status: "DRAFT" | "OPEN" | "PAID"; posted_transaction_id: string | null };
-    if (current.status === "PAID") {
-      return context.json({ error: "This bill is already paid -- unwind the payment before deleting" }, 409);
+    if (current.status === "PAID" || (await hasPayments("bill", billId))) {
+      return context.json({ error: "This bill has payments -- delete them before deleting it" }, 409);
     }
 
     if (current.posted_transaction_id) {

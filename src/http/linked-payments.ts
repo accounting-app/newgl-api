@@ -3,6 +3,7 @@ import type { Context } from "hono";
 import { ValidationError } from "@/core/errors";
 import type { LedgerPosting, PostingEntryType } from "@/domain/models";
 import { getServices, getTenantId } from "@/http/context";
+import { refreshDocument } from "@/http/document-payments";
 import { getSql } from "@/infra/postgres/client";
 
 /**
@@ -12,7 +13,7 @@ import { getSql } from "@/infra/postgres/client";
  */
 
 const LOCKED_MESSAGE =
-  "This payment paid an invoice or bill, so its amount and accounts receivable or payable line can't change. Delete the payment and record it again.";
+  "This payment is applied to an invoice or bill, so its amount and accounts receivable or payable line can't change. Delete the payment and record it again.";
 
 // Test mode (fixed services, no real tenant) has no invoices or bills to look up.
 function tenantWithDocuments(context: Context): string | undefined {
@@ -24,32 +25,28 @@ async function paidSomething(context: Context, transactionId: string): Promise<b
   const tenantId = tenantWithDocuments(context);
   if (!tenantId) return false;
   const rows = await getSql()`
-    select 1 from invoices i join ledgers l on l.id = i.ledger_id
-    where l.tenant_id = ${tenantId} and i.payment_transaction_id = ${transactionId}
-    union all
-    select 1 from bills b join ledgers l on l.id = b.ledger_id
-    where l.tenant_id = ${tenantId} and b.payment_transaction_id = ${transactionId}
+    select 1 from payment_applications p join ledgers l on l.id = p.ledger_id
+    where l.tenant_id = ${tenantId} and p.payment_transaction_id = ${transactionId}
     limit 1
   `;
   return rows.length > 0;
 }
 
-/** A deleted, voided or reversed payment no longer pays anything: its invoices and bills are open again. */
+/** A deleted, voided or reversed payment no longer pays anything: what it was applied to opens up again. */
 export async function reopenPaidDocuments(context: Context, transactionIds: string[]): Promise<void> {
   const tenantId = tenantWithDocuments(context);
   if (!tenantId) return;
   const sql = getSql();
   for (const transactionId of new Set(transactionIds)) {
-    await sql`
-      update invoices set status = 'OPEN', payment_transaction_id = null, updated_at = now()
+    const removed = (await sql`
+      delete from payment_applications
       where payment_transaction_id = ${transactionId}
         and ledger_id in (select id from ledgers where tenant_id = ${tenantId})
-    `;
-    await sql`
-      update bills set status = 'OPEN', payment_transaction_id = null, updated_at = now()
-      where payment_transaction_id = ${transactionId}
-        and ledger_id in (select id from ledgers where tenant_id = ${tenantId})
-    `;
+      returning invoice_id, bill_id
+    `) as { invoice_id: string | null; bill_id: string | null }[];
+    for (const row of removed) {
+      await refreshDocument(row.invoice_id ? "invoice" : "bill", (row.invoice_id ?? row.bill_id)!);
+    }
   }
 }
 

@@ -446,4 +446,48 @@ describe("Invoice routes (metadata + real ledger postings, scoped to the active 
     expect(invoices[0]!.status).toBe("OPEN");
     expect(invoices[0]!.paymentTransactionId).toBeUndefined();
   });
+
+  test("pays in parts, applies a credit, and reopens when a payment is removed", async () => {
+    if (!reachable) return;
+    const { headers } = await bootstrapUser("partial");
+    const json = { ...headers, "Content-Type": "application/json" };
+    const post = (path: string, body: unknown) => app.request(path, { method: "POST", headers: json, body: JSON.stringify(body) });
+    type Doc = { id: string; status: string; openBalance: number; paidAmount: number; payments: { transactionId: string; amount: number }[] };
+    const customerId = await createCustomer(headers, "Jane Smith");
+    const bank = (await findAccount(headers, "BANK"))!;
+    const invoice = (await (await post("/api/invoices", { customerId, invoiceDate: "2026-03-01", dueDate: "2026-03-31", amount: 500 })).json()) as Doc;
+    expect(invoice.openBalance).toBe(500);
+
+    const part = (await (await post(`/api/invoices/${invoice.id}/pay`, { depositAccountId: bank.id, amount: 200 })).json()) as Doc;
+    expect(part.status).toBe("OPEN");
+    expect(part.openBalance).toBe(300);
+    expect((await post(`/api/invoices/${invoice.id}/pay`, { depositAccountId: bank.id, amount: 301 })).status).toBe(400);
+    expect((await app.request(`/api/invoices/${invoice.id}`, { method: "DELETE", headers })).status).toBe(409);
+
+    // An unapplied payment of 400: only the 300 still owed can go to this invoice.
+    const receivable = (await findAccount(headers, "ACCOUNTS_RECEIVABLE"))!;
+    const draft = (await (
+      await post("/api/transactions", {
+        type: "RECEIVE_PAYMENT",
+        transactionDate: "2026-03-10",
+        payee: "Jane Smith",
+        postings: [
+          { accountId: bank.id, type: "DEBIT", amount: 400 },
+          { accountId: receivable.id, type: "CREDIT", amount: 400 }
+        ]
+      })
+    ).json()) as { id: string };
+    await post(`/api/transactions/${draft.id}/post`, {});
+    expect((await post(`/api/invoices/${invoice.id}/apply`, { paymentTransactionId: draft.id, amount: 301 })).status).toBe(400);
+    const paid = (await (await post(`/api/invoices/${invoice.id}/apply`, { paymentTransactionId: draft.id, amount: 300 })).json()) as Doc;
+    expect(paid.status).toBe("PAID");
+    expect(paid.openBalance).toBe(0);
+    expect(paid.payments).toHaveLength(2);
+
+    expect((await post(`/api/transactions/${draft.id}/void`, {})).status).toBe(200);
+    const [after] = (await (await app.request("/api/invoices", { headers })).json()) as Doc[];
+    expect(after!.status).toBe("OPEN");
+    expect(after!.openBalance).toBe(300);
+    expect(after!.payments).toHaveLength(1);
+  });
 });
